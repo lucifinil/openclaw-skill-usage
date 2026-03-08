@@ -38,6 +38,31 @@ export async function runSkillUsageCommand({ cloud, args }) {
         text: formatStatus(status),
       };
     }
+    case "doctor": {
+      const status = await cloud.getStatusWithFallback();
+      const checks = [
+        [`cloud source`, status.source === "cloud" ? "ok" : "degraded/local"],
+        [`totals`, `${status.summary.totalTriggers} triggers / ${status.summary.totalAttempts} attempts`],
+        [`last observed`, status.summary.lastObservedAt ?? "none yet"],
+      ];
+
+      const hints = [];
+      if (status.summary.totalAttempts === 0) {
+        hints.push("No skill events yet. Trigger any skill by reading a SKILL.md (for example weather or skill-vetter).");
+        hints.push("If events stay at zero, verify hooks are registered in this runtime (before_tool_call/after_tool_call).");
+      }
+      if (status.degradedReason) {
+        hints.push(`Cloud degraded: ${status.degradedReason}`);
+      }
+
+      return {
+        text: [
+          "Skill usage doctor:",
+          ...checks.map(([k, v]) => `- ${k}: ${v}`),
+          ...(hints.length ? ["", "Hints:", ...hints.map((h) => `- ${h}`)] : []),
+        ].join("\n"),
+      };
+    }
     case "sync": {
       const sync = await cloud.syncAll();
       return {
