@@ -14,6 +14,7 @@ import {
 
 const READ_TOOL_NAMES = new Set([
   "read",
+  "functions.read",
   "read_file",
   "filesystem.read",
   "fs.read",

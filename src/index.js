@@ -14,27 +14,36 @@ export default function register(api) {
     },
   });
 
-  api.registerHook(
-    "before_tool_call",
-    async (payload) => {
-      await plugin.onBeforeToolCall(payload);
-    },
-    {
-      name: "skill-usage.before-tool-call",
-      description: "Observes skill file reads before the tool executes.",
-    },
-  );
+  const beforeHandler = async (payload) => {
+    await plugin.onBeforeToolCall(payload);
+  };
+  const afterHandler = async (payload) => {
+    await plugin.onAfterToolCall(payload);
+  };
 
-  api.registerHook(
-    "after_tool_call",
-    async (payload) => {
-      await plugin.onAfterToolCall(payload);
-    },
-    {
-      name: "skill-usage.after-tool-call",
-      description: "Finalizes and records skill usage observations after the tool executes.",
-    },
-  );
+  // Runtime compatibility: support both event emitter hooks and registerHook API,
+  // plus snake_case/camelCase names observed across versions.
+  api.on?.("before_tool_call", beforeHandler);
+  api.on?.("after_tool_call", afterHandler);
+  api.on?.("beforeToolCall", beforeHandler);
+  api.on?.("afterToolCall", afterHandler);
+
+  api.registerHook?.("before_tool_call", beforeHandler, {
+    name: "skill-usage.before-tool-call",
+    description: "Observes skill file reads before the tool executes.",
+  });
+  api.registerHook?.("after_tool_call", afterHandler, {
+    name: "skill-usage.after-tool-call",
+    description: "Finalizes and records skill usage observations after the tool executes.",
+  });
+  api.registerHook?.("beforeToolCall", beforeHandler, {
+    name: "skill-usage.beforeToolCall",
+    description: "Compatibility hook for beforeToolCall.",
+  });
+  api.registerHook?.("afterToolCall", afterHandler, {
+    name: "skill-usage.afterToolCall",
+    description: "Compatibility hook for afterToolCall.",
+  });
 
   api.registerCommand?.({
     name: "skillusage",

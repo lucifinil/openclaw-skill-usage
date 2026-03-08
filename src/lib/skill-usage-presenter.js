@@ -70,6 +70,7 @@ export function formatHelp() {
   return [
     "Usage:",
     "/skillusage status",
+    "/skillusage doctor",
     "/skillusage top [1d|7d|30d|all]",
     "/skillusage sync",
     "/skillusage join-token",
