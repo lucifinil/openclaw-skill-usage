@@ -38,6 +38,14 @@ function toTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
 }
 
+function sortInstallations(left, right) {
+  return (
+    right.triggerCount - left.triggerCount ||
+    right.attemptCount - left.attemptCount ||
+    left.installationLabel.localeCompare(right.installationLabel)
+  );
+}
+
 function summarizeRows(events) {
   const installations = new Set();
   const agents = new Set();
@@ -111,7 +119,10 @@ export class LocalUsageAnalytics {
           installationIds: new Set(),
           agentIds: new Set(),
           subagentRunIds: new Set(),
+          installations: new Map(),
         };
+      const installationId = event.installationId ?? "unknown-installation";
+      const installationLabel = event.installationLabel ?? installationId;
 
       current.attemptCount += 1;
       if (event.firstTrigger) {
@@ -126,6 +137,18 @@ export class LocalUsageAnalytics {
       if (event.sessionScope === "subagent" && event.runId) {
         current.subagentRunIds.add(event.runId);
       }
+      const installationCurrent =
+        current.installations.get(installationId) ?? {
+          installationId,
+          installationLabel,
+          triggerCount: 0,
+          attemptCount: 0,
+        };
+      installationCurrent.attemptCount += 1;
+      if (event.firstTrigger) {
+        installationCurrent.triggerCount += 1;
+      }
+      current.installations.set(installationId, installationCurrent);
 
       grouped.set(event.skillId, current);
     });
@@ -150,6 +173,7 @@ export class LocalUsageAnalytics {
           installationCount: row.installationIds.size,
           agentCount: row.agentIds.size,
           subagentRunCount: row.subagentRunIds.size,
+          installations: Array.from(row.installations.values()).sort(sortInstallations),
         }))
         .sort(
           (left, right) =>
@@ -164,6 +188,7 @@ export class LocalUsageAnalytics {
   async querySummary({
     usageSpaceId,
     usageSpaceSource,
+    installationLabel = null,
     databaseName = null,
     zero = null,
     degradedReason = null,
@@ -178,6 +203,7 @@ export class LocalUsageAnalytics {
       aggregationScope: "local-installation",
       usageSpaceId,
       usageSpaceSource,
+      installationLabel,
       databaseName,
       zero,
       summary: summarizeRows(events),

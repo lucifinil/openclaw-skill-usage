@@ -10,6 +10,7 @@ Use the `skill_usage_stats` tool when the user asks about:
 - most-used or least-used skills
 - rankings for `1d`, `7d`, `30d`, or `all`
 - how usage is shared across installations, agents, or subagent runs
+- which installations contributed to a skill's total and by how much
 - whether counts are local-only or joined into a shared usage space
 
 Defaults:
@@ -28,5 +29,6 @@ Response expectations:
 
 - Name the period explicitly.
 - Surface the top skills first.
+- When the result is shared, include the installation breakdown if it helps answer the question.
 - Mention the usage-space scope if it matters to the answer.
 - If the user asks about privacy, state that only non-sensitive metadata is synced: skill ids/names, installation/agent identifiers, session scope, timestamps, status, and latency.

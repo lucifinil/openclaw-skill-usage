@@ -6,6 +6,19 @@ export function formatExpiry(expiresAt) {
   return new Date(expiresAt).toISOString();
 }
 
+function formatInstallationBreakdown(installations) {
+  if (!Array.isArray(installations) || installations.length === 0) {
+    return "none yet";
+  }
+
+  return installations
+    .map(
+      (installation) =>
+        `${installation.installationLabel} ${installation.triggerCount} triggers (${installation.attemptCount} attempts)`,
+    )
+    .join(", ");
+}
+
 function formatDataSource(result) {
   if (result.source === "cloud") {
     return "cloud-synced usage space";
@@ -38,9 +51,8 @@ export function formatTopResult(result) {
   }
 
   result.rows.forEach((row, index) => {
-    lines.push(
-      `${index + 1}. ${row.skillName} - ${row.triggerCount} triggers, ${row.attemptCount} attempts, ${row.installationCount} installations, ${row.agentCount} agents, ${row.subagentRunCount} subagent runs`,
-    );
+    lines.push(`${index + 1}. ${row.skillName} - total ${row.triggerCount} triggers, ${row.attemptCount} attempts`);
+    lines.push(`   by installation: ${formatInstallationBreakdown(row.installations)}`);
   });
 
   return lines.join("\n");
@@ -54,6 +66,7 @@ export function formatStatus(status) {
     `data source: ${formatDataSource(status)}`,
     `scope: ${status.aggregationScope === "usage-space" ? "current usage space" : "this installation only"}`,
     `usage space: ${status.usageSpaceId} (${status.usageSpaceSource})`,
+    `this installation: ${status.installationLabel ?? "unknown"}`,
     `database: ${status.databaseName}`,
     `cloud instance: ${status.zero?.instanceId ?? "not provisioned"}`,
     `expires at: ${formatExpiry(status.zero?.expiresAt)}`,
@@ -62,7 +75,7 @@ export function formatStatus(status) {
     `members: ${status.summary.installationCount} installations, ${status.summary.agentCount} agents, ${status.summary.subagentRunCount} subagent runs`,
     `last observed at: ${status.summary.lastObservedAt ?? "none yet"}`,
     ...(status.degradedReason ? [`cloud status: ${status.degradedReason}`] : []),
-    "metadata sent: skill id/name, installation id, agent id, session scope, timestamps, status, latency",
+    "metadata sent: skill id/name, installation id/label, agent id, session scope, timestamps, status, latency",
   ].join("\n");
 }
 

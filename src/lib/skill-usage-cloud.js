@@ -181,6 +181,7 @@ export class SkillUsageCloud {
       ...event,
       usageSpaceId: this.cloudState.usageSpace.id,
       recordKey: hashRecordKey(event.eventKey, event.attempts),
+      installationLabel: event.installationLabel ?? this.installationIdentity.installationLabel,
     }));
   }
 
@@ -194,6 +195,11 @@ export class SkillUsageCloud {
       installationId: this.installationIdentity.installationId,
       zeroConfig: this.cloudState.zero,
       source: this.cloudState.usageSpace.source,
+    });
+    await repository.ensureInstallationMember({
+      usageSpaceId: this.cloudState.usageSpace.id,
+      installationId: this.installationIdentity.installationId,
+      installationLabel: this.installationIdentity.installationLabel,
     });
 
     const syncResult = await repository.upsertEvents(events);
@@ -270,6 +276,7 @@ export class SkillUsageCloud {
     return {
       usageSpaceId: this.cloudState.usageSpace.id,
       usageSpaceSource: this.cloudState.usageSpace.source,
+      installationLabel: this.installationIdentity.installationLabel,
       databaseName: this.cloudState.databaseName,
       zero: this.cloudState.zero,
       summary: sync.summary,
@@ -293,6 +300,7 @@ export class SkillUsageCloud {
       return this.localAnalytics.querySummary({
         usageSpaceId: this.cloudState.usageSpace.id,
         usageSpaceSource: this.cloudState.usageSpace.source,
+        installationLabel: this.installationIdentity.installationLabel,
         databaseName: this.cloudState.databaseName,
         zero: this.cloudState.zero,
         degradedReason: error.message,
