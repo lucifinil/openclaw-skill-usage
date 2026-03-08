@@ -11,7 +11,7 @@ import {
 import { createSkillUsagePlugin } from "../src/lib/skill-usage-plugin.js";
 
 function createApi(stateDir, overrides = {}) {
-  return {
+  const base = {
     config: {
       plugins: {
         entries: {
@@ -31,6 +31,19 @@ function createApi(stateDir, overrides = {}) {
       error() {},
     },
   };
+
+  if (overrides.configOverride) {
+    base.config = {
+      ...base.config,
+      ...overrides.configOverride,
+      plugins: {
+        ...base.config.plugins,
+        ...overrides.configOverride.plugins,
+      },
+    };
+  }
+
+  return base;
 }
 
 test("createPendingSkillRead detects SKILL.md reads", () => {
@@ -200,6 +213,43 @@ test("plugin records one trigger for repeated skill reads in the same run", asyn
     assert.equal(typeof plugin.installationIdentity.installationLabel, "string");
     assert.ok(plugin.installationIdentity.installationLabel.length > 0);
     assert.equal(events[0].installationLabel, plugin.installationIdentity.installationLabel);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("plugin records memory tools as pseudo skill using configured memory slot", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-pseudo-skill-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({
+      api: createApi(tempDir, {
+        configOverride: {
+          plugins: {
+            slots: {
+              memory: "mem9",
+            },
+          },
+        },
+      }),
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "memory_search",
+      toolCallId: "call-memory-1",
+      ok: true,
+      result: { items: [] },
+      context: {
+        agentId: "main",
+        runId: "run-memory-1",
+        turnId: "turn-memory-1",
+        timestamp: "2026-03-07T09:00:01.000Z",
+      },
+    });
+
+    assert.equal(record.skillName, "mem9 (includes plugin)");
+    assert.equal(record.skillId, "mem9-includes-plugin");
+    assert.equal(record.firstTrigger, true);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
