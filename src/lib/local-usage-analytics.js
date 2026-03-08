@@ -143,10 +143,17 @@ export class LocalUsageAnalytics {
           installationLabel,
           triggerCount: 0,
           attemptCount: 0,
+          mainTriggerCount: 0,
+          subagentTriggerCount: 0,
         };
       installationCurrent.attemptCount += 1;
       if (event.firstTrigger) {
         installationCurrent.triggerCount += 1;
+        if (event.sessionScope === "subagent") {
+          installationCurrent.subagentTriggerCount += 1;
+        } else {
+          installationCurrent.mainTriggerCount += 1;
+        }
       }
       current.installations.set(installationId, installationCurrent);
 

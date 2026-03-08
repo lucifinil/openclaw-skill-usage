@@ -25,12 +25,16 @@ test("skill usage tool renders top rankings", async () => {
                 installationLabel: "Mac-mini",
                 triggerCount: 3,
                 attemptCount: 4,
+                mainTriggerCount: 2,
+                subagentTriggerCount: 1,
               },
               {
                 installationId: "install-2",
                 installationLabel: "MBP",
                 triggerCount: 2,
                 attemptCount: 2,
+                mainTriggerCount: 2,
+                subagentTriggerCount: 0,
               },
             ],
           },
@@ -48,7 +52,10 @@ test("skill usage tool renders top rankings", async () => {
   assert.equal(result.content[0].type, "text");
   assert.match(result.content[0].text, /Top skills for 30 days/);
   assert.match(result.content[0].text, /git-pr/);
-  assert.match(result.content[0].text, /by installation: Mac-mini 3 triggers \(4 attempts\), MBP 2 triggers \(2 attempts\)/);
+  assert.match(result.content[0].text, /Mac-mini - 3 total triggers, 4 attempts/);
+  assert.match(result.content[0].text, /scope split: main 2, subagent 1/);
+  assert.match(result.content[0].text, /MBP - 2 total triggers, 2 attempts/);
+  assert.match(result.content[0].text, /scope split: main 2, subagent 0/);
 });
 
 test("skill usage tool renders status output", async () => {
