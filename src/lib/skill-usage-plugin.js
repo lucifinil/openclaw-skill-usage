@@ -1,13 +1,18 @@
 import path from "node:path";
 import { JsonlSkillUsageStore } from "./local-event-store.js";
-import { ensureInstallationIdentity, resolveStateDir } from "./plugin-config.js";
+import {
+  ensureInstallationIdentity,
+  resolvePluginOptions,
+} from "./plugin-config.js";
 import { createPendingSkillRead, finalizeSkillObservation } from "./skill-usage-detector.js";
 import { normalizeToolCallId } from "./hook-context.js";
+import { SkillUsageCloud } from "./skill-usage-cloud.js";
+import { runSkillUsageCommand } from "./skill-usage-command.js";
 
 function noop() {}
 
 export class SkillUsagePlugin {
-  constructor({ api }) {
+  constructor({ api, cloudFactory }) {
     this.api = api;
     this.logger = api?.logger ?? {
       debug: noop,
@@ -20,6 +25,15 @@ export class SkillUsagePlugin {
     this.initializing = null;
     this.installationIdentity = null;
     this.store = null;
+    this.options = resolvePluginOptions(api);
+    this.cloudFactory =
+      cloudFactory ??
+      ((args) =>
+        new SkillUsageCloud({
+          ...args,
+          options: this.options,
+        }));
+    this.cloud = null;
   }
 
   async initialize() {
@@ -29,12 +43,19 @@ export class SkillUsagePlugin {
 
     if (!this.initializing) {
       this.initializing = (async () => {
-        const stateDir = resolveStateDir(this.api);
+        const stateDir = this.options.stateDir;
         this.installationIdentity = await ensureInstallationIdentity(stateDir);
         this.store = new JsonlSkillUsageStore({
           rootDir: path.join(stateDir, "events"),
         });
         await this.store.initialize();
+        this.cloud = this.cloudFactory({
+          stateDir,
+          installationIdentity: this.installationIdentity,
+          store: this.store,
+          logger: this.logger,
+        });
+        await this.cloud.initialize();
         this.initialized = true;
       })();
     }
@@ -85,10 +106,33 @@ export class SkillUsagePlugin {
       eventKey: record.eventKey,
     });
 
+    if (this.options.autoSync) {
+      this.cloud.enqueueSync("observed skill usage");
+    }
+
     return record;
   }
 
+  async runCommand(args) {
+    await this.initialize();
+
+    try {
+      return await runSkillUsageCommand({
+        cloud: this.cloud,
+        args,
+      });
+    } catch (error) {
+      return {
+        text: `Skill usage command failed: ${error.message}`,
+      };
+    }
+  }
+
   async stop() {
+    if (this.cloud) {
+      await this.cloud.stop();
+    }
+
     if (this.store) {
       await this.store.flush();
     }
@@ -97,6 +141,6 @@ export class SkillUsagePlugin {
   }
 }
 
-export function createSkillUsagePlugin({ api }) {
-  return new SkillUsagePlugin({ api });
+export function createSkillUsagePlugin({ api, cloudFactory }) {
+  return new SkillUsagePlugin({ api, cloudFactory });
 }

@@ -34,4 +34,12 @@ export default function register(api) {
       description: "Finalizes and records skill usage observations after the tool executes.",
     },
   );
+
+  api.registerCommand?.({
+    name: "skillusage",
+    description: "Show skill usage rankings, sync cloud state, and manage shared usage spaces.",
+    acceptsArgs: true,
+    requireAuth: true,
+    handler: async (ctx) => plugin.runCommand(ctx.args),
+  });
 }

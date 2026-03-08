@@ -4,6 +4,9 @@
   "description": "Zero-config OpenClaw skill usage analytics with OpenClaw hooks and TiDB Cloud Zero sync.",
   "type": "module",
   "private": true,
+  "dependencies": {
+    "mysql2": "^3.15.3"
+  },
   "engines": {
     "node": ">=20"
   },

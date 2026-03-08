@@ -7,6 +7,18 @@
       "stateDir": {
         "type": "string",
         "description": "Override the local state directory used for installation identity, dedupe state, and event buffering."
+      },
+      "autoSync": {
+        "type": "boolean",
+        "description": "When true, upload local skill usage records to TiDB Cloud Zero automatically after they are observed."
+      },
+      "provisionTag": {
+        "type": "string",
+        "description": "Optional tag sent when provisioning a TiDB Cloud Zero instance."
+      },
+      "databaseName": {
+        "type": "string",
+        "description": "Database name used inside the TiDB Cloud Zero instance for analytics tables."
       }
     }
   },
@@ -14,6 +26,17 @@
     "stateDir": {
       "label": "State directory",
       "placeholder": "~/.openclaw/state/plugins/skill-usage"
+    },
+    "autoSync": {
+      "label": "Auto sync"
+    },
+    "provisionTag": {
+      "label": "Provision tag",
+      "placeholder": "openclaw-skill-usage"
+    },
+    "databaseName": {
+      "label": "Database name",
+      "placeholder": "openclaw_skill_usage"
     }
   }
 }
