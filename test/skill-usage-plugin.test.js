@@ -290,6 +290,50 @@ test("plugin captures subagent run id from childSessionKey even when tool name i
   }
 });
 
+test("plugin prefers sessions_spawn result.runId over payload.runId", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-subagent-prefer-result-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({ api: createApi(tempDir) });
+
+    await plugin.onAfterToolCall({
+      toolName: "sessions_spawn",
+      params: { runtime: "subagent" },
+      runId: "parent-run-1",
+      result: {
+        runId: "child-run-1",
+        childSessionKey: "agent:main:subagent:child",
+      },
+      context: { timestamp: "2026-03-07T12:30:00.000Z" },
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-child-run-1",
+      params: { path: "/usr/local/lib/node_modules/openclaw/skills/weather/SKILL.md" },
+      context: {
+        runId: "child-run-1",
+        timestamp: "2026-03-07T12:30:01.000Z",
+      },
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-child-run-1",
+      ok: true,
+      result: { content: "---\nname: weather\n---\n# Weather\n" },
+      context: {
+        runId: "child-run-1",
+        timestamp: "2026-03-07T12:30:02.000Z",
+      },
+    });
+
+    assert.equal(record.sessionScope, "subagent");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("plugin keeps subagent run mapping across plugin instances", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-subagent-persist-"));
 

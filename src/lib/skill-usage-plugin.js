@@ -20,9 +20,10 @@ function tryCaptureSubagentRunId(payload) {
   const result = payload?.result ?? {};
   const runtime = payload?.params?.runtime ?? payload?.input?.runtime ?? payload?.args?.runtime;
   const childKey = result?.childSessionKey ?? payload?.childSessionKey ?? null;
-  const runId = result?.runId ?? payload?.runId ?? null;
-
   const isNamedSpawnTool = Boolean(toolName && SUBAGENT_SPAWN_TOOLS.has(toolName));
+  const runId = isNamedSpawnTool
+    ? (result?.runId ?? null)
+    : (result?.runId ?? payload?.runId ?? null);
   const isSubagentFromPayload =
     runtime === "subagent" ||
     (typeof childKey === "string" && childKey.includes(":subagent:"));
