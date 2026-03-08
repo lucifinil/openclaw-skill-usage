@@ -215,16 +215,32 @@ export function normalizeRunContext(payload) {
 
   const sessionScopeHint = firstString(
     payload?.sessionScope,
+    payload?.scope,
+    payload?.sessionType,
+    payload?.sessionKind,
     getNestedString(payload, ["context", "sessionScope"]),
+    getNestedString(payload, ["context", "scope"]),
+    getNestedString(payload, ["context", "sessionType"]),
+    getNestedString(payload, ["context", "sessionKind"]),
+    getNestedString(payload, ["session", "scope"]),
+    getNestedString(payload, ["session", "type"]),
   );
 
+  const agentId = firstString(
+    payload?.agentId,
+    getNestedString(payload, ["context", "agentId"]),
+    getNestedString(payload, ["agent", "id"]),
+    getNestedString(payload, ["run", "agentId"]),
+    getNestedString(payload, ["context", "agent", "id"]),
+  );
+
+  const isSubagentFlag =
+    payload?.isSubagent === true ||
+    getNestedValue(payload, ["context", "isSubagent"]) === true ||
+    getNestedValue(payload, ["session", "isSubagent"]) === true;
+
   return {
-    agentId: firstString(
-      payload?.agentId,
-      getNestedString(payload, ["context", "agentId"]),
-      getNestedString(payload, ["agent", "id"]),
-      getNestedString(payload, ["run", "agentId"]),
-    ),
+    agentId,
     runId: firstString(
       payload?.runId,
       getNestedString(payload, ["context", "runId"]),
@@ -239,7 +255,9 @@ export function normalizeRunContext(payload) {
     sessionKey,
     sessionScope:
       sessionScopeHint ??
-      (payload?.isSubagent === true || sessionKey?.toLowerCase().includes("subagent")
+      (isSubagentFlag ||
+      sessionKey?.toLowerCase().includes("subagent") ||
+      agentId?.toLowerCase().includes("subagent")
         ? "subagent"
         : "main"),
     turnId: firstString(

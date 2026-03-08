@@ -201,3 +201,46 @@ test("plugin records one trigger for repeated skill reads in the same run", asyn
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("plugin marks read events as subagent when runId was spawned via sessions_spawn", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-subagent-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({ api: createApi(tempDir) });
+
+    await plugin.onAfterToolCall({
+      toolName: "sessions_spawn",
+      params: { runtime: "subagent" },
+      result: {
+        runId: "sub-run-123",
+        childSessionKey: "agent:main:subagent:abc",
+      },
+      context: { timestamp: "2026-03-07T10:00:00.000Z" },
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-sub-1",
+      params: { path: "/usr/local/lib/node_modules/openclaw/skills/weather/SKILL.md" },
+      context: {
+        runId: "sub-run-123",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-sub-1",
+      ok: true,
+      result: { content: "---\nname: weather\n---\n# Weather\n" },
+      context: {
+        runId: "sub-run-123",
+        timestamp: "2026-03-07T10:00:02.000Z",
+      },
+    });
+
+    assert.equal(record.sessionScope, "subagent");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

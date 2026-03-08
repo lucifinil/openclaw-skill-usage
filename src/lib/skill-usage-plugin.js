@@ -5,12 +5,29 @@ import {
   resolvePluginOptions,
 } from "./plugin-config.js";
 import { createPendingSkillRead, finalizeSkillObservation } from "./skill-usage-detector.js";
-import { normalizeToolCallId } from "./hook-context.js";
+import { normalizeToolCallId, normalizeToolName } from "./hook-context.js";
 import { SkillUsageCloud } from "./skill-usage-cloud.js";
 import { runSkillUsageCommand } from "./skill-usage-command.js";
 import { executeSkillUsageTool } from "./skill-usage-tool.js";
 
 function noop() {}
+
+const SUBAGENT_SPAWN_TOOLS = new Set(["sessions_spawn", "functions.sessions_spawn"]);
+
+function tryCaptureSubagentRunId(payload) {
+  const toolName = normalizeToolName(payload);
+  if (!toolName || !SUBAGENT_SPAWN_TOOLS.has(toolName)) return null;
+
+  const result = payload?.result ?? {};
+  const runtime = payload?.params?.runtime ?? payload?.input?.runtime ?? payload?.args?.runtime;
+  const childKey = result?.childSessionKey ?? payload?.childSessionKey ?? null;
+  const runId = result?.runId ?? payload?.runId ?? null;
+
+  const isSubagent = runtime === "subagent" || (typeof childKey === "string" && childKey.includes(":subagent:"));
+  if (!isSubagent) return null;
+
+  return typeof runId === "string" && runId.length > 0 ? runId : null;
+}
 
 export class SkillUsagePlugin {
   constructor({ api, cloudFactory }) {
@@ -22,6 +39,7 @@ export class SkillUsagePlugin {
       error: noop,
     };
     this.pendingReads = new Map();
+    this.subagentRunIds = new Set();
     this.initialized = false;
     this.initializing = null;
     this.installationIdentity = null;
@@ -77,6 +95,12 @@ export class SkillUsagePlugin {
   }
 
   async onAfterToolCall(payload) {
+    const maybeSubagentRunId = tryCaptureSubagentRunId(payload);
+    if (maybeSubagentRunId) {
+      this.subagentRunIds.add(maybeSubagentRunId);
+      this.logger.debug?.("Captured subagent run id", { runId: maybeSubagentRunId });
+    }
+
     const fallbackPending = createPendingSkillRead(payload);
     const toolCallId = normalizeToolCallId(payload);
     const pendingKey = fallbackPending?.pendingKey ?? toolCallId;
@@ -97,6 +121,10 @@ export class SkillUsagePlugin {
       payload,
       installationId: this.installationIdentity.installationId,
     });
+
+    if (event.runId && this.subagentRunIds.has(event.runId)) {
+      event.sessionScope = "subagent";
+    }
 
     const record = await this.store.record(event);
 
@@ -159,6 +187,7 @@ export class SkillUsagePlugin {
     }
 
     this.pendingReads.clear();
+    this.subagentRunIds.clear();
   }
 }
 
