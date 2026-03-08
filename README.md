@@ -46,13 +46,13 @@ Install the plugin, restart the Gateway, and use it.
 Local development install:
 
 ```bash
-openclaw plugins install .
 npm install
+openclaw plugins install .
 ```
 
 Then restart the OpenClaw Gateway.
 
-After that, the plugin starts counting immediately. The first cloud-backed query or sync auto-provisions a TiDB Cloud Zero instance with no manual database setup.
+After that, the plugin starts counting immediately. The first cloud-backed query or sync auto-provisions a TiDB Cloud Zero instance with no manual database setup. If TiDB Cloud Zero is unreachable, `top` and `status` still return local-only data so the plugin remains useful offline.
 
 ## Native OpenClaw surface
 
@@ -100,6 +100,8 @@ On another installation:
 ```text
 /skillusage join <token>
 ```
+
+If TiDB Cloud Zero is unavailable, `/skillusage top ...` and `/skillusage status` fall back to this installation's local event buffer and tell you that the result is local-only or degraded.
 
 ## Sharing model
 
@@ -155,6 +157,9 @@ If you want durable long-term history, claim the instance before it expires.
 
 ```text
 Top skills for 7 days:
+data source: local fallback (cloud currently unavailable)
+scope: this installation only
+cloud status: TiDB Cloud Zero provisioning failed with HTTP 503.
 1. gh-issue-pr-iterations - 18 triggers, 22 attempts, 2 installations, 3 agents, 5 subagent runs
 2. git-pr - 11 triggers, 12 attempts, 2 installations, 2 agents, 1 subagent runs
 3. prepare-svp-weekly-report - 4 triggers, 4 attempts, 1 installations, 1 agents, 0 subagent runs
@@ -162,6 +167,8 @@ Top skills for 7 days:
 
 ```text
 Skill usage status:
+data source: cloud-synced usage space
+scope: current usage space
 usage space: 7f2c... (joined)
 database: openclaw_skill_usage
 cloud instance: zero_abc123
@@ -169,6 +176,7 @@ expires at: 2026-04-06T10:00:00.000Z
 claim URL: https://...
 synced totals: 38 triggers, 45 attempts
 members: 2 installations, 3 agents, 6 subagent runs
+last observed at: 2026-03-08T07:40:00.000Z
 metadata sent: skill id/name, installation id, agent id, session scope, timestamps, status, latency
 ```
 

@@ -66,7 +66,7 @@ export async function executeSkillUsageTool({ cloud, params }) {
   }
 
   if (action === "status") {
-    const status = await cloud.getStatus();
+    const status = await cloud.getStatusWithFallback();
     return {
       content: [
         {
@@ -77,7 +77,7 @@ export async function executeSkillUsageTool({ cloud, params }) {
     };
   }
 
-  const result = await cloud.queryTopSkills({
+  const result = await cloud.queryTopSkillsWithFallback({
     periodKey: normalizePeriod(params?.period),
     limit: normalizeLimit(params?.limit),
   });
