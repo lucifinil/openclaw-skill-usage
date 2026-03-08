@@ -179,11 +179,21 @@ Top skills for 7 days:
 data source: cloud-synced usage space
 scope: current usage space
 1. gh-issue-pr-iterations - total 18 triggers, 22 attempts
-   by installation: Mac-mini 10 triggers (12 attempts), MBP 8 triggers (10 attempts)
+   by installation:
+   Mac-mini - 10 total triggers, 12 attempts
+      scope split: main 6, subagent 4
+   MBP - 8 total triggers, 10 attempts
+      scope split: main 5, subagent 3
 2. git-pr - total 11 triggers, 12 attempts
-   by installation: Mac-mini 7 triggers (7 attempts), MBP 4 triggers (5 attempts)
+   by installation:
+   Mac-mini - 7 total triggers, 7 attempts
+      scope split: main 5, subagent 2
+   MBP - 4 total triggers, 5 attempts
+      scope split: main 3, subagent 1
 3. prepare-svp-weekly-report - total 4 triggers, 4 attempts
-   by installation: Mac-mini 4 triggers (4 attempts)
+   by installation:
+   Mac-mini - 4 total triggers, 4 attempts
+      scope split: main 4, subagent 0
 ```
 
 ```text

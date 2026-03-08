@@ -6,17 +6,23 @@ export function formatExpiry(expiresAt) {
   return new Date(expiresAt).toISOString();
 }
 
-function formatInstallationBreakdown(installations) {
+function formatInstallationBreakdownLines(installations) {
   if (!Array.isArray(installations) || installations.length === 0) {
-    return "none yet";
+    return ["   by installation: none yet"];
   }
 
-  return installations
-    .map(
-      (installation) =>
-        `${installation.installationLabel} ${installation.triggerCount} triggers (${installation.attemptCount} attempts)`,
-    )
-    .join(", ");
+  const lines = ["   by installation:"];
+
+  installations.forEach((installation) => {
+    lines.push(
+      `   ${installation.installationLabel} - ${installation.triggerCount} total triggers, ${installation.attemptCount} attempts`,
+    );
+    lines.push(
+      `      scope split: main ${installation.mainTriggerCount ?? 0}, subagent ${installation.subagentTriggerCount ?? 0}`,
+    );
+  });
+
+  return lines;
 }
 
 function formatDataSource(result) {
@@ -52,7 +58,7 @@ export function formatTopResult(result) {
 
   result.rows.forEach((row, index) => {
     lines.push(`${index + 1}. ${row.skillName} - total ${row.triggerCount} triggers, ${row.attemptCount} attempts`);
-    lines.push(`   by installation: ${formatInstallationBreakdown(row.installations)}`);
+    lines.push(...formatInstallationBreakdownLines(row.installations));
   });
 
   return lines.join("\n");

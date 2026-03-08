@@ -66,6 +66,8 @@ test("local analytics ranks skills across all time", async () => {
       installationLabel: "Mac-mini",
       triggerCount: 1,
       attemptCount: 2,
+      mainTriggerCount: 1,
+      subagentTriggerCount: 0,
     },
   ]);
 });

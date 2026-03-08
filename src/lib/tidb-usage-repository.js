@@ -318,7 +318,9 @@ export class TiDBUsageRepository {
         skill_usage_events.installation_id AS installationId,
         COALESCE(usage_space_installations.installation_label, skill_usage_events.installation_id) AS installationLabel,
         SUM(CASE WHEN skill_usage_events.first_trigger THEN 1 ELSE 0 END) AS triggerCount,
-        COUNT(*) AS attemptCount
+        COUNT(*) AS attemptCount,
+        SUM(CASE WHEN skill_usage_events.first_trigger AND skill_usage_events.session_scope = 'subagent' THEN 1 ELSE 0 END) AS subagentTriggerCount,
+        SUM(CASE WHEN skill_usage_events.first_trigger AND skill_usage_events.session_scope <> 'subagent' THEN 1 ELSE 0 END) AS mainTriggerCount
       FROM skill_usage_events
       LEFT JOIN usage_space_installations
         ON usage_space_installations.usage_space_id = skill_usage_events.usage_space_id
@@ -342,6 +344,8 @@ export class TiDBUsageRepository {
         installationLabel: row.installationLabel,
         triggerCount: Number(row.triggerCount ?? 0),
         attemptCount: Number(row.attemptCount ?? 0),
+        mainTriggerCount: Number(row.mainTriggerCount ?? 0),
+        subagentTriggerCount: Number(row.subagentTriggerCount ?? 0),
       });
       installationsBySkill.set(row.skillId, current);
     });

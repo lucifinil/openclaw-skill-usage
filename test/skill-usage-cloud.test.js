@@ -79,10 +79,17 @@ class FakeRepository {
           installationLabel,
           triggerCount: 0,
           attemptCount: 0,
+          mainTriggerCount: 0,
+          subagentTriggerCount: 0,
         };
       installationCurrent.attemptCount += 1;
       if (event.firstTrigger) {
         installationCurrent.triggerCount += 1;
+        if (event.sessionScope === "subagent") {
+          installationCurrent.subagentTriggerCount += 1;
+        } else {
+          installationCurrent.mainTriggerCount += 1;
+        }
       }
       current.installations.set(event.installationId, installationCurrent);
 
@@ -333,12 +340,16 @@ test("cloud sync provisions once and aggregates top skills", async () => {
         installationLabel: "Mac-mini",
         triggerCount: 1,
         attemptCount: 2,
+        mainTriggerCount: 1,
+        subagentTriggerCount: 0,
       },
       {
         installationId: "install-2",
         installationLabel: "MBP",
         triggerCount: 1,
         attemptCount: 1,
+        mainTriggerCount: 1,
+        subagentTriggerCount: 0,
       },
     ]);
   } finally {
@@ -408,12 +419,16 @@ test("command handler returns top rankings and join tokens", async () => {
                 installationLabel: "Mac-mini",
                 triggerCount: 2,
                 attemptCount: 3,
+                mainTriggerCount: 1,
+                subagentTriggerCount: 1,
               },
               {
                 installationId: "install-2",
                 installationLabel: "MBP",
                 triggerCount: 1,
                 attemptCount: 1,
+                mainTriggerCount: 1,
+                subagentTriggerCount: 0,
               },
             ],
           },
