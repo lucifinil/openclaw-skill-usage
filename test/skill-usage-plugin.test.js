@@ -10,7 +10,7 @@ import {
 } from "../src/lib/skill-usage-detector.js";
 import { createSkillUsagePlugin } from "../src/lib/skill-usage-plugin.js";
 
-function createApi(stateDir) {
+function createApi(stateDir, overrides = {}) {
   return {
     config: {
       plugins: {
@@ -18,6 +18,7 @@ function createApi(stateDir) {
           "skill-usage": {
             config: {
               stateDir,
+              autoSync: overrides.autoSync ?? false,
             },
           },
         },

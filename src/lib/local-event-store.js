@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile, appendFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 async function readJson(filePath, fallback) {
@@ -98,6 +98,19 @@ export class JsonlSkillUsageStore {
   }
 
   async flush() {
+    await this.queue;
+  }
+
+  async clear() {
+    this.queue = this.queue.then(async () => {
+      await this.initialize();
+      this.index = {};
+      await Promise.all([
+        writeJsonAtomic(this.indexPath, this.index),
+        rm(this.eventsPath, { force: true }),
+      ]);
+    });
+
     await this.queue;
   }
 }
