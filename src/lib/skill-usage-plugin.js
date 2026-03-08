@@ -3,8 +3,13 @@ import { JsonlSkillUsageStore } from "./local-event-store.js";
 import {
   ensureInstallationIdentity,
   resolvePluginOptions,
+  resolvePluginSlots,
 } from "./plugin-config.js";
-import { createPendingSkillRead, finalizeSkillObservation } from "./skill-usage-detector.js";
+import {
+  createPendingSkillRead,
+  createPseudoSkillObservation,
+  finalizeSkillObservation,
+} from "./skill-usage-detector.js";
 import { normalizeToolCallId, normalizeToolName } from "./hook-context.js";
 import { SkillUsageCloud } from "./skill-usage-cloud.js";
 import { runSkillUsageCommand } from "./skill-usage-command.js";
@@ -14,6 +19,13 @@ import { SubagentRunIndex } from "./subagent-run-index.js";
 function noop() {}
 
 const SUBAGENT_SPAWN_TOOLS = new Set(["sessions_spawn", "functions.sessions_spawn"]);
+const MEMORY_TOOL_NAMES = new Set([
+  "memory_search",
+  "memory_store",
+  "memory_get",
+  "memory_update",
+  "memory_delete",
+]);
 
 function tryCaptureSubagentRunId(payload) {
   const toolName = normalizeToolName(payload);
@@ -35,6 +47,24 @@ function tryCaptureSubagentRunId(payload) {
   return typeof runId === "string" && runId.length > 0 ? runId : null;
 }
 
+function resolvePseudoSkillDescriptor(payload, pluginSlots) {
+  const toolName = normalizeToolName(payload);
+
+  if (toolName && MEMORY_TOOL_NAMES.has(toolName)) {
+    const slotName =
+      typeof pluginSlots?.memory === "string" && pluginSlots.memory.trim().length > 0
+        ? pluginSlots.memory.trim()
+        : "memory";
+
+    return {
+      pseudoSkillId: `${slotName}-includes-plugin`,
+      pseudoSkillName: `${slotName} (includes plugin)`,
+    };
+  }
+
+  return null;
+}
+
 export class SkillUsagePlugin {
   constructor({ api, cloudFactory }) {
     this.api = api;
@@ -52,6 +82,7 @@ export class SkillUsagePlugin {
     this.installationIdentity = null;
     this.store = null;
     this.options = resolvePluginOptions(api);
+    this.pluginSlots = resolvePluginSlots(api);
     this.cloudFactory =
       cloudFactory ??
       ((args) =>
@@ -122,21 +153,33 @@ export class SkillUsagePlugin {
     const pendingKey = fallbackPending?.pendingKey ?? toolCallId;
     const pending = (pendingKey && this.pendingReads.get(pendingKey)) ?? fallbackPending;
 
-    if (!pending) {
-      return null;
-    }
-
-    if (pendingKey) {
-      this.pendingReads.delete(pendingKey);
-    }
-
     await this.initialize();
 
-    const event = finalizeSkillObservation({
-      pending,
-      payload,
-      installationId: this.installationIdentity.installationId,
-    });
+    let event = null;
+
+    if (pending) {
+      if (pendingKey) {
+        this.pendingReads.delete(pendingKey);
+      }
+
+      event = finalizeSkillObservation({
+        pending,
+        payload,
+        installationId: this.installationIdentity.installationId,
+      });
+    } else {
+      const pseudoSkill = resolvePseudoSkillDescriptor(payload, this.pluginSlots);
+      if (!pseudoSkill) {
+        return null;
+      }
+
+      event = createPseudoSkillObservation({
+        payload,
+        installationId: this.installationIdentity.installationId,
+        pseudoSkillId: pseudoSkill.pseudoSkillId,
+        pseudoSkillName: pseudoSkill.pseudoSkillName,
+      });
+    }
 
     if (
       event.runId &&

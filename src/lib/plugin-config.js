@@ -13,6 +13,10 @@ function getPluginEntryConfig(api) {
   return api?.config?.plugins?.entries?.[PLUGIN_ID]?.config ?? {};
 }
 
+export function resolvePluginSlots(api) {
+  return api?.config?.plugins?.slots ?? {};
+}
+
 export function resolvePluginOptions(api) {
   const entryConfig = getPluginEntryConfig(api);
 

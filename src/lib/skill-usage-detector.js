@@ -117,6 +117,35 @@ function buildTriggerAnchor(runContext) {
   );
 }
 
+function buildBaseObservation({ payload, installationId, triggerAnchor, skillId, skillName }) {
+  const runContext = normalizeRunContext(payload);
+  const eventKey = hash([installationId, triggerAnchor, skillId]);
+
+  return {
+    schemaVersion: 1,
+    eventType: "skill_usage",
+    eventKey,
+    installationId,
+    usageSpaceId: installationId,
+    triggerAnchor,
+    toolCallId: normalizeToolCallId(payload) ?? null,
+    observedAt: runContext.observedAt,
+    status: normalizeToolStatus(payload),
+    latencyMs: normalizeLatencyMs(payload),
+    agentId: runContext.agentId,
+    runId: runContext.runId,
+    sessionId: runContext.sessionId,
+    sessionKey: runContext.sessionKey,
+    sessionScope: runContext.sessionScope,
+    turnId: runContext.turnId,
+    messageId: runContext.messageId,
+    requestId: runContext.requestId,
+    channelId: runContext.channelId,
+    skillId,
+    skillName,
+  };
+}
+
 export function createPendingSkillRead(payload) {
   const toolName = normalizeToolName(payload);
 
@@ -161,32 +190,46 @@ export function finalizeSkillObservation({ pending, payload, installationId }) {
   const skillName = declaredName ?? pending.fallbackSkillName;
   const skillId = slugify(skillName) || slugify(pending.fallbackSkillName) || "unknown-skill";
   const triggerAnchor = buildTriggerAnchor(runContext);
-  const eventKey = hash([installationId, triggerAnchor, skillId]);
 
   return {
-    schemaVersion: 1,
-    eventType: "skill_usage",
-    eventKey,
-    installationId,
-    usageSpaceId: installationId,
-    triggerAnchor,
+    ...buildBaseObservation({
+      payload: {
+        ...payload,
+        context: runContext,
+      },
+      installationId,
+      triggerAnchor,
+      skillId,
+      skillName,
+    }),
     toolCallId: normalizeToolCallId(payload) ?? pending.toolCallId ?? null,
-    observedAt: runContext.observedAt,
-    status: normalizeToolStatus(payload),
     latencyMs: normalizeLatencyMs(payload, pending.startedAt),
-    agentId: runContext.agentId,
-    runId: runContext.runId,
-    sessionId: runContext.sessionId,
-    sessionKey: runContext.sessionKey,
-    sessionScope: runContext.sessionScope,
-    turnId: runContext.turnId,
-    messageId: runContext.messageId,
-    requestId: runContext.requestId,
-    channelId: runContext.channelId,
-    skillId,
-    skillName,
     skillDeclaredName: declaredName,
     skillPath: pending.skillPath,
     skillSource: pending.skillSource,
+  };
+}
+
+export function createPseudoSkillObservation({ payload, installationId, pseudoSkillName, pseudoSkillId }) {
+  if (typeof pseudoSkillName !== "string" || pseudoSkillName.trim().length === 0) {
+    return null;
+  }
+
+  const runContext = normalizeRunContext(payload);
+  const triggerAnchor = buildTriggerAnchor(runContext);
+  const skillName = pseudoSkillName.trim();
+  const skillId = pseudoSkillId ?? (slugify(skillName) || "unknown-pseudo-skill");
+
+  return {
+    ...buildBaseObservation({
+      payload,
+      installationId,
+      triggerAnchor,
+      skillId,
+      skillName,
+    }),
+    skillDeclaredName: null,
+    skillPath: null,
+    skillSource: "plugin",
   };
 }
