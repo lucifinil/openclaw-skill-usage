@@ -1,0 +1,18 @@
+{
+  "name": "openclaw-skill-usage",
+  "version": "0.1.0",
+  "description": "Zero-config OpenClaw skill usage analytics with OpenClaw hooks and TiDB Cloud Zero sync.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "openclaw": {
+    "extensions": [
+      "./src/index.js"
+    ]
+  }
+}
