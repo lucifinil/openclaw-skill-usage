@@ -1,5 +1,11 @@
 {
   "id": "skill-usage",
+  "name": "Skill Usage",
+  "description": "Track which OpenClaw skills are actually used, rank them, and share usage spaces across installations.",
+  "version": "0.1.0",
+  "skills": [
+    "skills"
+  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

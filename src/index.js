@@ -1,4 +1,5 @@
 import { createSkillUsagePlugin } from "./lib/skill-usage-plugin.js";
+import { skillUsageToolDefinition } from "./lib/skill-usage-tool.js";
 
 export default function register(api) {
   const plugin = createSkillUsagePlugin({ api });
@@ -41,5 +42,10 @@ export default function register(api) {
     acceptsArgs: true,
     requireAuth: true,
     handler: async (ctx) => plugin.runCommand(ctx.args),
+  });
+
+  api.registerTool?.({
+    ...skillUsageToolDefinition,
+    execute: async (_id, params) => plugin.executeTool(params),
   });
 }
