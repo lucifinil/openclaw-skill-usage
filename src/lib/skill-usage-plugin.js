@@ -63,7 +63,9 @@ export class SkillUsagePlugin {
     if (!this.initializing) {
       this.initializing = (async () => {
         const stateDir = this.options.stateDir;
-        this.installationIdentity = await ensureInstallationIdentity(stateDir);
+        this.installationIdentity = await ensureInstallationIdentity(stateDir, {
+          installationLabel: this.options.installationLabel,
+        });
         this.store = new JsonlSkillUsageStore({
           rootDir: path.join(stateDir, "events"),
         });
@@ -126,7 +128,10 @@ export class SkillUsagePlugin {
       event.sessionScope = "subagent";
     }
 
-    const record = await this.store.record(event);
+    const record = await this.store.record({
+      ...event,
+      installationLabel: this.installationIdentity.installationLabel,
+    });
 
     this.logger.debug?.("Recorded skill usage event", {
       skillId: record.skillId,

@@ -73,6 +73,14 @@ function periodToSql(periodKey) {
   }
 }
 
+function sortInstallations(left, right) {
+  return (
+    right.triggerCount - left.triggerCount ||
+    right.attemptCount - left.attemptCount ||
+    left.installationLabel.localeCompare(right.installationLabel)
+  );
+}
+
 export class TiDBUsageRepository {
   constructor({ zeroConfig, databaseName, connectionFactory = defaultConnectionFactory }) {
     this.zeroConfig = zeroConfig;
@@ -102,6 +110,17 @@ export class TiDBUsageRepository {
         source VARCHAR(16) NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )`,
+    );
+    await this.connection.query(
+      `CREATE TABLE IF NOT EXISTS usage_space_installations (
+        usage_space_id VARCHAR(64) NOT NULL,
+        installation_id VARCHAR(64) NOT NULL,
+        installation_label VARCHAR(191) NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (usage_space_id, installation_id),
+        KEY idx_usage_space_installation_label (usage_space_id, installation_label)
       )`,
     );
     await this.connection.query(
@@ -166,6 +185,20 @@ export class TiDBUsageRepository {
         normalizeDate(zeroConfig.expiresAt),
         source,
       ],
+    );
+  }
+
+  async ensureInstallationMember({ usageSpaceId, installationId, installationLabel }) {
+    await this.initialize();
+    await this.connection.execute(
+      `INSERT INTO usage_space_installations (
+        usage_space_id,
+        installation_id,
+        installation_label
+      ) VALUES (?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        installation_label = VALUES(installation_label)`,
+      [usageSpaceId, installationId, installationLabel],
     );
   }
 
@@ -270,6 +303,49 @@ export class TiDBUsageRepository {
       [usageSpaceId, limit],
     );
 
+    if (rows.length === 0) {
+      return {
+        period,
+        rows: [],
+      };
+    }
+
+    const skillIds = rows.map((row) => row.skillId);
+    const placeholders = skillIds.map(() => "?").join(", ");
+    const [installationRows] = await this.connection.query(
+      `SELECT
+        skill_usage_events.skill_id AS skillId,
+        skill_usage_events.installation_id AS installationId,
+        COALESCE(usage_space_installations.installation_label, skill_usage_events.installation_id) AS installationLabel,
+        SUM(CASE WHEN skill_usage_events.first_trigger THEN 1 ELSE 0 END) AS triggerCount,
+        COUNT(*) AS attemptCount
+      FROM skill_usage_events
+      LEFT JOIN usage_space_installations
+        ON usage_space_installations.usage_space_id = skill_usage_events.usage_space_id
+        AND usage_space_installations.installation_id = skill_usage_events.installation_id
+      WHERE skill_usage_events.usage_space_id = ?
+      ${period.where}
+      AND skill_usage_events.skill_id IN (${placeholders})
+      GROUP BY
+        skill_usage_events.skill_id,
+        skill_usage_events.installation_id,
+        COALESCE(usage_space_installations.installation_label, skill_usage_events.installation_id)
+      ORDER BY triggerCount DESC, attemptCount DESC, installationLabel ASC`,
+      [usageSpaceId, ...skillIds],
+    );
+    const installationsBySkill = new Map();
+
+    installationRows.forEach((row) => {
+      const current = installationsBySkill.get(row.skillId) ?? [];
+      current.push({
+        installationId: row.installationId,
+        installationLabel: row.installationLabel,
+        triggerCount: Number(row.triggerCount ?? 0),
+        attemptCount: Number(row.attemptCount ?? 0),
+      });
+      installationsBySkill.set(row.skillId, current);
+    });
+
     return {
       period,
       rows: rows.map((row) => ({
@@ -280,6 +356,7 @@ export class TiDBUsageRepository {
         installationCount: Number(row.installationCount ?? 0),
         agentCount: Number(row.agentCount ?? 0),
         subagentRunCount: Number(row.subagentRunCount ?? 0),
+        installations: (installationsBySkill.get(row.skillId) ?? []).sort(sortInstallations),
       })),
     };
   }

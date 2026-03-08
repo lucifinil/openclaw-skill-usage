@@ -197,6 +197,9 @@ test("plugin records one trigger for repeated skill reads in the same run", asyn
     const events = await plugin.store.readAllEvents();
     assert.equal(events.length, 2);
     assert.equal(events[0].eventKey, events[1].eventKey);
+    assert.equal(typeof plugin.installationIdentity.installationLabel, "string");
+    assert.ok(plugin.installationIdentity.installationLabel.length > 0);
+    assert.equal(events[0].installationLabel, plugin.installationIdentity.installationLabel);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

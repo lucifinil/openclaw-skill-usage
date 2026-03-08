@@ -12,16 +12,30 @@ test("skill usage tool renders top rankings", async () => {
           aggregationScope: "usage-space",
           period: { label: "30 days" },
           rows: [
-            {
-              skillName: "git-pr",
-              triggerCount: 5,
-              attemptCount: 6,
-              installationCount: 2,
-              agentCount: 2,
-              subagentRunCount: 1,
-            },
-          ],
-        };
+          {
+            skillName: "git-pr",
+            triggerCount: 5,
+            attemptCount: 6,
+            installationCount: 2,
+            agentCount: 2,
+            subagentRunCount: 1,
+            installations: [
+              {
+                installationId: "install-1",
+                installationLabel: "Mac-mini",
+                triggerCount: 3,
+                attemptCount: 4,
+              },
+              {
+                installationId: "install-2",
+                installationLabel: "MBP",
+                triggerCount: 2,
+                attemptCount: 2,
+              },
+            ],
+          },
+        ],
+      };
       },
     },
     params: {
@@ -34,6 +48,7 @@ test("skill usage tool renders top rankings", async () => {
   assert.equal(result.content[0].type, "text");
   assert.match(result.content[0].text, /Top skills for 30 days/);
   assert.match(result.content[0].text, /git-pr/);
+  assert.match(result.content[0].text, /by installation: Mac-mini 3 triggers \(4 attempts\), MBP 2 triggers \(2 attempts\)/);
 });
 
 test("skill usage tool renders status output", async () => {
@@ -46,6 +61,7 @@ test("skill usage tool renders status output", async () => {
           aggregationScope: "usage-space",
           usageSpaceId: "space-1",
           usageSpaceSource: "joined",
+          installationLabel: "Mac-mini",
           databaseName: "openclaw_skill_usage",
           zero: {
             instanceId: "zero-1",
@@ -69,4 +85,5 @@ test("skill usage tool renders status output", async () => {
 
   assert.match(result.content[0].text, /space-1/);
   assert.match(result.content[0].text, /joined/);
+  assert.match(result.content[0].text, /this installation: Mac-mini/);
 });

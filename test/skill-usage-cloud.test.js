@@ -12,6 +12,7 @@ class FakeRepository {
   constructor() {
     this.events = new Map();
     this.spaceMeta = new Map();
+    this.installations = new Map();
   }
 
   async ensureUsageSpace({ usageSpaceId, installationId, zeroConfig, source }) {
@@ -19,6 +20,14 @@ class FakeRepository {
       installationId,
       zeroConfig,
       source,
+    });
+  }
+
+  async ensureInstallationMember({ usageSpaceId, installationId, installationLabel }) {
+    this.installations.set(`${usageSpaceId}:${installationId}`, {
+      usageSpaceId,
+      installationId,
+      installationLabel,
     });
   }
 
@@ -45,7 +54,13 @@ class FakeRepository {
           installationIds: new Set(),
           agentIds: new Set(),
           subagentRunIds: new Set(),
+          installations: new Map(),
         };
+      const installationKey = `${usageSpaceId}:${event.installationId}`;
+      const installationLabel =
+        this.installations.get(installationKey)?.installationLabel ??
+        event.installationLabel ??
+        event.installationId;
 
       current.attemptCount += 1;
       if (event.firstTrigger) {
@@ -58,6 +73,18 @@ class FakeRepository {
       if (event.sessionScope === "subagent" && event.runId) {
         current.subagentRunIds.add(event.runId);
       }
+      const installationCurrent =
+        current.installations.get(event.installationId) ?? {
+          installationId: event.installationId,
+          installationLabel,
+          triggerCount: 0,
+          attemptCount: 0,
+        };
+      installationCurrent.attemptCount += 1;
+      if (event.firstTrigger) {
+        installationCurrent.triggerCount += 1;
+      }
+      current.installations.set(event.installationId, installationCurrent);
 
       grouped.set(event.skillId, current);
     });
@@ -82,6 +109,12 @@ class FakeRepository {
           installationCount: row.installationIds.size,
           agentCount: row.agentIds.size,
           subagentRunCount: row.subagentRunIds.size,
+          installations: Array.from(row.installations.values()).sort(
+            (left, right) =>
+              right.triggerCount - left.triggerCount ||
+              right.attemptCount - left.attemptCount ||
+              left.installationLabel.localeCompare(right.installationLabel),
+          ),
         }))
         .sort(
           (left, right) =>
@@ -146,6 +179,7 @@ function createCloud(tempDir, repository) {
     stateDir: tempDir,
     installationIdentity: {
       installationId: "install-1",
+      installationLabel: "Mac-mini",
       createdAt: "2026-03-07T10:00:00.000Z",
     },
     store,
@@ -259,13 +293,54 @@ test("cloud sync provisions once and aggregates top skills", async () => {
     assert.equal(status.summary.totalAttempts, 3);
     assert.equal(status.summary.totalTriggers, 2);
     assert.equal(status.zero.instanceId, "zero-1");
+    assert.equal(status.installationLabel, "Mac-mini");
+
+    await repository.ensureInstallationMember({
+      usageSpaceId: "install-1",
+      installationId: "install-2",
+      installationLabel: "MBP",
+    });
+    await repository.upsertEvents([
+      {
+        recordKey: "external-record-1",
+        eventKey: "event-3",
+        attempts: 1,
+        firstTrigger: true,
+        usageSpaceId: "install-1",
+        installationId: "install-2",
+        installationLabel: "MBP",
+        agentId: "main",
+        runId: "run-2",
+        sessionScope: "main",
+        skillId: "git-pr",
+        skillName: "git-pr",
+        skillSource: "user",
+        status: "ok",
+        observedAt: "2026-03-07T10:06:00.000Z",
+        triggerAnchor: "turn-3",
+      },
+    ]);
 
     const top = await cloud.queryTopSkills({
       periodKey: "all",
     });
     assert.equal(top.rows[0].skillName, "git-pr");
-    assert.equal(top.rows[0].triggerCount, 1);
-    assert.equal(top.rows[0].attemptCount, 2);
+    assert.equal(top.rows[0].triggerCount, 2);
+    assert.equal(top.rows[0].attemptCount, 3);
+    assert.deepEqual(top.rows[0].installations, [
+      {
+        installationId: "install-1",
+        installationLabel: "Mac-mini",
+        triggerCount: 1,
+        attemptCount: 2,
+      },
+      {
+        installationId: "install-2",
+        installationLabel: "MBP",
+        triggerCount: 1,
+        attemptCount: 1,
+      },
+    ]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -327,6 +402,20 @@ test("command handler returns top rankings and join tokens", async () => {
             installationCount: 2,
             agentCount: 2,
             subagentRunCount: 1,
+            installations: [
+              {
+                installationId: "install-1",
+                installationLabel: "Mac-mini",
+                triggerCount: 2,
+                attemptCount: 3,
+              },
+              {
+                installationId: "install-2",
+                installationLabel: "MBP",
+                triggerCount: 1,
+                attemptCount: 1,
+              },
+            ],
           },
         ],
       };
@@ -341,6 +430,7 @@ test("command handler returns top rankings and join tokens", async () => {
         aggregationScope: "usage-space",
         usageSpaceId: "space-1",
         usageSpaceSource: "local",
+        installationLabel: "Mac-mini",
         databaseName: "openclaw_skill_usage",
         zero: {
           instanceId: "zero-1",
@@ -384,6 +474,7 @@ test("cloud falls back to local analytics when top queries fail", async () => {
       firstTrigger: true,
       firstObservedAt: "2026-03-07T10:00:00.000Z",
       installationId: "install-1",
+      installationLabel: "Mac-mini",
       agentId: "main",
       runId: "run-1",
       sessionScope: "main",
@@ -407,6 +498,7 @@ test("cloud falls back to local analytics when top queries fail", async () => {
     assert.equal(result.source, "local");
     assert.equal(result.cloudState, "local-only");
     assert.equal(result.rows[0].skillName, "git-pr");
+    assert.equal(result.rows[0].installations[0].installationLabel, "Mac-mini");
     assert.match(result.degradedReason, /network down/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -426,6 +518,7 @@ test("cloud falls back to local status when sync fails", async () => {
       firstTrigger: true,
       firstObservedAt: "2026-03-07T10:00:00.000Z",
       installationId: "install-1",
+      installationLabel: "Mac-mini",
       agentId: "main",
       runId: "run-1",
       sessionScope: "main",
@@ -445,6 +538,7 @@ test("cloud falls back to local status when sync fails", async () => {
 
     assert.equal(status.source, "local");
     assert.equal(status.summary.totalTriggers, 1);
+    assert.equal(status.installationLabel, "Mac-mini");
     assert.match(status.degradedReason, /zero unavailable/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

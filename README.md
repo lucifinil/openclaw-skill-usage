@@ -16,6 +16,7 @@ The product idea is simple:
 - ranks skills for `1d`, `7d`, `30d`, and `all`
 - auto-provisions TiDB Cloud Zero on first sync
 - shares counts across multiple OpenClaw installations with a join token
+- shows each skill's total first, then a per-installation breakdown using installation labels
 - keeps local-first defaults: one installation starts in its own usage space automatically
 - exposes both a slash command and an agent tool
 
@@ -101,7 +102,7 @@ On another installation:
 /skillusage join <token>
 ```
 
-If TiDB Cloud Zero is unavailable, `/skillusage top ...` and `/skillusage status` fall back to this installation's local event buffer and tell you that the result is local-only or degraded.
+If TiDB Cloud Zero is unavailable, `/skillusage top ...` and `/skillusage status` fall back to this installation's local event buffer and tell you that the result is local-only or degraded. In that fallback mode, the installation breakdown only reflects the current installation because other installations live in the shared cloud view.
 
 ## Sharing model
 
@@ -115,6 +116,7 @@ Professional terms used in this repo:
 Default behavior:
 
 - one installation starts in one private usage space
+- each installation gets a zero-config `installation label` from the machine hostname
 - agents and subagent runs inside that installation count together automatically
 
 When you want a shared chart:
@@ -123,12 +125,29 @@ When you want a shared chart:
 2. Run `/skillusage join <token>` on another installation.
 3. Both installations now write into the same usage space and see the same aggregated rankings.
 
+If you want a custom installation label instead of the hostname-derived default, set it in plugin config:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "skill-usage": {
+        "enabled": true,
+        "config": {
+          "installationLabel": "MBP"
+        }
+      }
+    }
+  }
+}
+```
+
 ## Privacy model
 
 Only non-sensitive metadata is synced:
 
 - skill id and skill name
-- installation id
+- installation id and installation label
 - agent id
 - session scope (`main` or `subagent`)
 - turn, message, request, and channel ids when available
@@ -157,12 +176,14 @@ If you want durable long-term history, claim the instance before it expires.
 
 ```text
 Top skills for 7 days:
-data source: local fallback (cloud currently unavailable)
-scope: this installation only
-cloud status: TiDB Cloud Zero provisioning failed with HTTP 503.
-1. gh-issue-pr-iterations - 18 triggers, 22 attempts, 2 installations, 3 agents, 5 subagent runs
-2. git-pr - 11 triggers, 12 attempts, 2 installations, 2 agents, 1 subagent runs
-3. prepare-svp-weekly-report - 4 triggers, 4 attempts, 1 installations, 1 agents, 0 subagent runs
+data source: cloud-synced usage space
+scope: current usage space
+1. gh-issue-pr-iterations - total 18 triggers, 22 attempts
+   by installation: Mac-mini 10 triggers (12 attempts), MBP 8 triggers (10 attempts)
+2. git-pr - total 11 triggers, 12 attempts
+   by installation: Mac-mini 7 triggers (7 attempts), MBP 4 triggers (5 attempts)
+3. prepare-svp-weekly-report - total 4 triggers, 4 attempts
+   by installation: Mac-mini 4 triggers (4 attempts)
 ```
 
 ```text
@@ -170,6 +191,7 @@ Skill usage status:
 data source: cloud-synced usage space
 scope: current usage space
 usage space: 7f2c... (joined)
+this installation: Mac-mini
 database: openclaw_skill_usage
 cloud instance: zero_abc123
 expires at: 2026-04-06T10:00:00.000Z
@@ -177,7 +199,7 @@ claim URL: https://...
 synced totals: 38 triggers, 45 attempts
 members: 2 installations, 3 agents, 6 subagent runs
 last observed at: 2026-03-08T07:40:00.000Z
-metadata sent: skill id/name, installation id, agent id, session scope, timestamps, status, latency
+metadata sent: skill id/name, installation id/label, agent id, session scope, timestamps, status, latency
 ```
 
 ## Why this can become a default plugin

@@ -1,10 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { hostname as osHostname } from "node:os";
 
 const PLUGIN_ID = "skill-usage";
 const DEFAULT_DATABASE_NAME = "openclaw_skill_usage";
 const DEFAULT_PROVISION_TAG = "openclaw-skill-usage";
+const DEFAULT_INSTALLATION_LABEL_PREFIX = "installation";
+const MAX_INSTALLATION_LABEL_LENGTH = 80;
 
 function getPluginEntryConfig(api) {
   return api?.config?.plugins?.entries?.[PLUGIN_ID]?.config ?? {};
@@ -24,6 +27,10 @@ export function resolvePluginOptions(api) {
       typeof entryConfig.databaseName === "string" && entryConfig.databaseName.trim().length > 0
         ? entryConfig.databaseName.trim()
         : DEFAULT_DATABASE_NAME,
+    installationLabel:
+      typeof entryConfig.installationLabel === "string" && entryConfig.installationLabel.trim().length > 0
+        ? normalizeInstallationLabel(entryConfig.installationLabel)
+        : null,
   };
 }
 
@@ -64,18 +71,44 @@ export async function writeJsonAtomic(filePath, value) {
   await rename(tempPath, filePath);
 }
 
-export async function ensureInstallationIdentity(stateDir) {
+export function normalizeInstallationLabel(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().replace(/\s+/g, " ");
+  return normalized.length > 0 ? normalized.slice(0, MAX_INSTALLATION_LABEL_LENGTH) : null;
+}
+
+function defaultInstallationLabel(installationId) {
+  const hostLabel = normalizeInstallationLabel(osHostname());
+
+  if (hostLabel) {
+    return hostLabel;
+  }
+
+  return `${DEFAULT_INSTALLATION_LABEL_PREFIX}-${installationId.slice(0, 8)}`;
+}
+
+export async function ensureInstallationIdentity(stateDir, { installationLabel } = {}) {
   await mkdir(stateDir, { recursive: true });
   const identityPath = path.join(stateDir, "installation.json");
   const existing = await readJson(identityPath);
+  const installationId = existing?.installationId ?? randomUUID();
+  const nextInstallationLabel =
+    normalizeInstallationLabel(installationLabel) ??
+    normalizeInstallationLabel(existing?.installationLabel) ??
+    defaultInstallationLabel(installationId);
 
-  if (existing?.installationId) {
+  if (existing?.installationId && existing?.installationLabel === nextInstallationLabel) {
     return existing;
   }
 
   const created = {
-    installationId: randomUUID(),
-    createdAt: new Date().toISOString(),
+    ...existing,
+    installationId,
+    installationLabel: nextInstallationLabel,
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
   };
 
   await writeJsonAtomic(identityPath, created);

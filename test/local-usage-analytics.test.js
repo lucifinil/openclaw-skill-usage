@@ -17,6 +17,7 @@ test("local analytics ranks skills across all time", async () => {
         observedAt: "2026-03-07T10:00:00.000Z",
         firstTrigger: true,
         installationId: "install-1",
+        installationLabel: "Mac-mini",
         agentId: "main",
         sessionScope: "main",
         runId: "run-1",
@@ -27,6 +28,7 @@ test("local analytics ranks skills across all time", async () => {
         observedAt: "2026-03-07T10:01:00.000Z",
         firstTrigger: false,
         installationId: "install-1",
+        installationLabel: "Mac-mini",
         agentId: "main",
         sessionScope: "main",
         runId: "run-1",
@@ -37,6 +39,7 @@ test("local analytics ranks skills across all time", async () => {
         observedAt: "2026-03-06T10:00:00.000Z",
         firstTrigger: true,
         installationId: "install-1",
+        installationLabel: "Mac-mini",
         agentId: "worker",
         sessionScope: "subagent",
         runId: "sub-1",
@@ -57,6 +60,14 @@ test("local analytics ranks skills across all time", async () => {
   assert.equal(result.rows[0].skillName, "git-pr");
   assert.equal(result.rows[0].triggerCount, 1);
   assert.equal(result.rows[0].attemptCount, 2);
+  assert.deepEqual(result.rows[0].installations, [
+    {
+      installationId: "install-1",
+      installationLabel: "Mac-mini",
+      triggerCount: 1,
+      attemptCount: 2,
+    },
+  ]);
 });
 
 test("local analytics status summarizes the installation scope", async () => {
@@ -66,6 +77,7 @@ test("local analytics status summarizes the installation scope", async () => {
         observedAt: "2026-03-07T10:00:00.000Z",
         firstTrigger: true,
         installationId: "install-1",
+        installationLabel: "Mac-mini",
         agentId: "main",
         sessionScope: "main",
         runId: "run-1",
@@ -76,6 +88,7 @@ test("local analytics status summarizes the installation scope", async () => {
         observedAt: "2026-03-07T11:00:00.000Z",
         firstTrigger: true,
         installationId: "install-1",
+        installationLabel: "Mac-mini",
         agentId: "worker",
         sessionScope: "subagent",
         runId: "sub-2",
@@ -88,10 +101,12 @@ test("local analytics status summarizes the installation scope", async () => {
   const status = await analytics.querySummary({
     usageSpaceId: "install-1",
     usageSpaceSource: "local",
+    installationLabel: "Mac-mini",
     databaseName: "openclaw_skill_usage",
   });
 
   assert.equal(status.source, "local");
+  assert.equal(status.installationLabel, "Mac-mini");
   assert.equal(status.summary.totalTriggers, 2);
   assert.equal(status.summary.agentCount, 2);
   assert.equal(status.summary.subagentRunCount, 1);
