@@ -247,3 +247,45 @@ test("plugin marks read events as subagent when runId was spawned via sessions_s
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("plugin captures subagent run id from childSessionKey even when tool name is not normalized", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-subagent-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({ api: createApi(tempDir) });
+
+    await plugin.onAfterToolCall({
+      toolName: null,
+      result: {
+        runId: "sub-run-456",
+        childSessionKey: "agent:main:subagent:def",
+      },
+      context: { timestamp: "2026-03-07T11:00:00.000Z" },
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-sub-2",
+      params: { path: "/usr/local/lib/node_modules/openclaw/skills/weather/SKILL.md" },
+      context: {
+        runId: "sub-run-456",
+        timestamp: "2026-03-07T11:00:01.000Z",
+      },
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-sub-2",
+      ok: true,
+      result: { content: "---\nname: weather\n---\n# Weather\n" },
+      context: {
+        runId: "sub-run-456",
+        timestamp: "2026-03-07T11:00:02.000Z",
+      },
+    });
+
+    assert.equal(record.sessionScope, "subagent");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

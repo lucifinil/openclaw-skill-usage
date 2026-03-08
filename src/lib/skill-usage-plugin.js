@@ -16,15 +16,20 @@ const SUBAGENT_SPAWN_TOOLS = new Set(["sessions_spawn", "functions.sessions_spaw
 
 function tryCaptureSubagentRunId(payload) {
   const toolName = normalizeToolName(payload);
-  if (!toolName || !SUBAGENT_SPAWN_TOOLS.has(toolName)) return null;
-
   const result = payload?.result ?? {};
   const runtime = payload?.params?.runtime ?? payload?.input?.runtime ?? payload?.args?.runtime;
   const childKey = result?.childSessionKey ?? payload?.childSessionKey ?? null;
   const runId = result?.runId ?? payload?.runId ?? null;
 
-  const isSubagent = runtime === "subagent" || (typeof childKey === "string" && childKey.includes(":subagent:"));
-  if (!isSubagent) return null;
+  const isNamedSpawnTool = Boolean(toolName && SUBAGENT_SPAWN_TOOLS.has(toolName));
+  const isSubagentFromPayload =
+    runtime === "subagent" ||
+    (typeof childKey === "string" && childKey.includes(":subagent:"));
+
+  if (!isSubagentFromPayload) return null;
+  if (!isNamedSpawnTool && !(typeof childKey === "string" && childKey.includes(":subagent:"))) {
+    return null;
+  }
 
   return typeof runId === "string" && runId.length > 0 ? runId : null;
 }
