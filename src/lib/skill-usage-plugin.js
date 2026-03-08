@@ -8,6 +8,7 @@ import { createPendingSkillRead, finalizeSkillObservation } from "./skill-usage-
 import { normalizeToolCallId } from "./hook-context.js";
 import { SkillUsageCloud } from "./skill-usage-cloud.js";
 import { runSkillUsageCommand } from "./skill-usage-command.js";
+import { executeSkillUsageTool } from "./skill-usage-tool.js";
 
 function noop() {}
 
@@ -124,6 +125,26 @@ export class SkillUsagePlugin {
     } catch (error) {
       return {
         text: `Skill usage command failed: ${error.message}`,
+      };
+    }
+  }
+
+  async executeTool(params) {
+    await this.initialize();
+
+    try {
+      return await executeSkillUsageTool({
+        cloud: this.cloud,
+        params,
+      });
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Skill usage tool failed: ${error.message}`,
+          },
+        ],
       };
     }
   }
