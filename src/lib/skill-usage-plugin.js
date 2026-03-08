@@ -9,6 +9,7 @@ import { normalizeToolCallId, normalizeToolName } from "./hook-context.js";
 import { SkillUsageCloud } from "./skill-usage-cloud.js";
 import { runSkillUsageCommand } from "./skill-usage-command.js";
 import { executeSkillUsageTool } from "./skill-usage-tool.js";
+import { SubagentRunIndex } from "./subagent-run-index.js";
 
 function noop() {}
 
@@ -45,6 +46,7 @@ export class SkillUsagePlugin {
     };
     this.pendingReads = new Map();
     this.subagentRunIds = new Set();
+    this.subagentRunIndex = null;
     this.initialized = false;
     this.initializing = null;
     this.installationIdentity = null;
@@ -75,6 +77,11 @@ export class SkillUsagePlugin {
           rootDir: path.join(stateDir, "events"),
         });
         await this.store.initialize();
+        this.subagentRunIndex = new SubagentRunIndex({
+          stateDir,
+          logger: this.logger,
+        });
+        await this.subagentRunIndex.initialize();
         this.cloud = this.cloudFactory({
           stateDir,
           installationIdentity: this.installationIdentity,
@@ -105,6 +112,8 @@ export class SkillUsagePlugin {
     const maybeSubagentRunId = tryCaptureSubagentRunId(payload);
     if (maybeSubagentRunId) {
       this.subagentRunIds.add(maybeSubagentRunId);
+      await this.initialize();
+      await this.subagentRunIndex?.mark(maybeSubagentRunId);
       this.logger.debug?.("Captured subagent run id", { runId: maybeSubagentRunId });
     }
 
@@ -129,7 +138,10 @@ export class SkillUsagePlugin {
       installationId: this.installationIdentity.installationId,
     });
 
-    if (event.runId && this.subagentRunIds.has(event.runId)) {
+    if (
+      event.runId &&
+      (this.subagentRunIds.has(event.runId) || this.subagentRunIndex?.has(event.runId))
+    ) {
       event.sessionScope = "subagent";
     }
 
