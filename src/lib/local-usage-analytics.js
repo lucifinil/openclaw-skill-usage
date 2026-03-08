@@ -46,6 +46,27 @@ function sortInstallations(left, right) {
   );
 }
 
+function resolveSubagentIdentityKey(event) {
+  if (event?.sessionScope !== "subagent") {
+    return null;
+  }
+
+  const candidates = [
+    event.runId,
+    event.sessionKey,
+    event.sessionId,
+    event.triggerAnchor,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
 function summarizeRows(events) {
   const installations = new Set();
   const agents = new Set();
@@ -65,8 +86,9 @@ function summarizeRows(events) {
     if (event.agentId) {
       agents.add(event.agentId);
     }
-    if (event.sessionScope === "subagent" && event.runId) {
-      subagentRuns.add(event.runId);
+    const subagentIdentity = resolveSubagentIdentityKey(event);
+    if (subagentIdentity) {
+      subagentRuns.add(subagentIdentity);
     }
     if (!lastObservedAt || new Date(event.observedAt) > new Date(lastObservedAt)) {
       lastObservedAt = event.observedAt;
@@ -134,8 +156,9 @@ export class LocalUsageAnalytics {
       if (event.agentId) {
         current.agentIds.add(event.agentId);
       }
-      if (event.sessionScope === "subagent" && event.runId) {
-        current.subagentRunIds.add(event.runId);
+      const subagentIdentity = resolveSubagentIdentityKey(event);
+      if (subagentIdentity) {
+        current.subagentRunIds.add(subagentIdentity);
       }
       const installationCurrent =
         current.installations.get(installationId) ?? {

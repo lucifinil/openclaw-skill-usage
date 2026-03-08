@@ -72,6 +72,55 @@ test("local analytics ranks skills across all time", async () => {
   ]);
 });
 
+test("local analytics treats subagent events without runId as one subagent run when session identity exists", async () => {
+  const analytics = new LocalUsageAnalytics({
+    store: createStore([
+      {
+        observedAt: "2026-03-07T10:00:00.000Z",
+        firstTrigger: true,
+        installationId: "install-1",
+        installationLabel: "Mac-mini",
+        agentId: "worker",
+        sessionScope: "subagent",
+        runId: null,
+        sessionKey: "agent:main:subagent:abc",
+        triggerAnchor: "anchor-1",
+        skillId: "weather",
+        skillName: "weather",
+      },
+      {
+        observedAt: "2026-03-07T10:01:00.000Z",
+        firstTrigger: false,
+        installationId: "install-1",
+        installationLabel: "Mac-mini",
+        agentId: "worker",
+        sessionScope: "subagent",
+        runId: null,
+        sessionKey: "agent:main:subagent:abc",
+        triggerAnchor: "anchor-2",
+        skillId: "weather",
+        skillName: "weather",
+      },
+    ]),
+  });
+
+  const top = await analytics.queryTopSkills({
+    periodKey: "all",
+    usageSpaceId: "install-1",
+    usageSpaceSource: "local",
+  });
+
+  assert.equal(top.rows[0].subagentRunCount, 1);
+
+  const status = await analytics.querySummary({
+    usageSpaceId: "install-1",
+    usageSpaceSource: "local",
+    installationLabel: "Mac-mini",
+  });
+
+  assert.equal(status.summary.subagentRunCount, 1);
+});
+
 test("local analytics status summarizes the installation scope", async () => {
   const analytics = new LocalUsageAnalytics({
     store: createStore([

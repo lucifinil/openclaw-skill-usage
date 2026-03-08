@@ -293,7 +293,7 @@ export class TiDBUsageRepository {
         COUNT(*) AS attemptCount,
         COUNT(DISTINCT installation_id) AS installationCount,
         COUNT(DISTINCT agent_id) AS agentCount,
-        COUNT(DISTINCT CASE WHEN session_scope = 'subagent' THEN run_id END) AS subagentRunCount
+        COUNT(DISTINCT CASE WHEN session_scope = 'subagent' THEN COALESCE(NULLIF(run_id, ''), NULLIF(session_key, ''), NULLIF(session_id, ''), NULLIF(trigger_anchor, '')) END) AS subagentRunCount
       FROM skill_usage_events
       WHERE usage_space_id = ?
       ${period.where}
@@ -373,7 +373,7 @@ export class TiDBUsageRepository {
         SUM(CASE WHEN first_trigger THEN 1 ELSE 0 END) AS totalTriggers,
         COUNT(DISTINCT installation_id) AS installationCount,
         COUNT(DISTINCT agent_id) AS agentCount,
-        COUNT(DISTINCT CASE WHEN session_scope = 'subagent' THEN run_id END) AS subagentRunCount,
+        COUNT(DISTINCT CASE WHEN session_scope = 'subagent' THEN COALESCE(NULLIF(run_id, ''), NULLIF(session_key, ''), NULLIF(session_id, ''), NULLIF(trigger_anchor, '')) END) AS subagentRunCount,
         MAX(observed_at) AS lastObservedAt
       FROM skill_usage_events
       WHERE usage_space_id = ?`,
