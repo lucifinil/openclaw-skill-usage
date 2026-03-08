@@ -1,0 +1,19 @@
+{
+  "id": "skill-usage",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "stateDir": {
+        "type": "string",
+        "description": "Override the local state directory used for installation identity, dedupe state, and event buffering."
+      }
+    }
+  },
+  "uiHints": {
+    "stateDir": {
+      "label": "State directory",
+      "placeholder": "~/.openclaw/state/plugins/skill-usage"
+    }
+  }
+}

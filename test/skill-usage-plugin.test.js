@@ -1,0 +1,202 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import { JsonlSkillUsageStore } from "../src/lib/local-event-store.js";
+import {
+  createPendingSkillRead,
+  finalizeSkillObservation,
+} from "../src/lib/skill-usage-detector.js";
+import { createSkillUsagePlugin } from "../src/lib/skill-usage-plugin.js";
+
+function createApi(stateDir) {
+  return {
+    config: {
+      plugins: {
+        entries: {
+          "skill-usage": {
+            config: {
+              stateDir,
+            },
+          },
+        },
+      },
+    },
+    logger: {
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+    },
+  };
+}
+
+test("createPendingSkillRead detects SKILL.md reads", () => {
+  const pending = createPendingSkillRead({
+    toolName: "read",
+    toolCallId: "call-1",
+    params: {
+      path: "/Users/demo/.codex/skills/git-pr/SKILL.md",
+    },
+    context: {
+      agentId: "main",
+      runId: "run-1",
+      sessionId: "session-1",
+      timestamp: "2026-03-07T10:00:00.000Z",
+    },
+  });
+
+  assert.ok(pending);
+  assert.equal(pending.skillSource, "user");
+  assert.equal(pending.fallbackSkillName, "git-pr");
+  assert.equal(pending.pendingKey, "call-1");
+});
+
+test("finalizeSkillObservation prefers declared skill names from frontmatter", () => {
+  const pending = createPendingSkillRead({
+    toolName: "read",
+    toolCallId: "call-2",
+    params: {
+      path: "/Users/demo/.openclaw/skills/gh-issue-pr-iterations/SKILL.md",
+    },
+    context: {
+      agentId: "main",
+      runId: "run-9",
+      turnId: "turn-3",
+      timestamp: "2026-03-07T10:00:00.000Z",
+    },
+  });
+
+  const event = finalizeSkillObservation({
+    pending,
+    installationId: "install-1",
+    payload: {
+      toolName: "read",
+      toolCallId: "call-2",
+      ok: true,
+      result: {
+        content: "---\nname: gh-issue-pr-iterations\n---\n# GitHub Issue PR Iterations\n",
+      },
+      context: {
+        agentId: "main",
+        runId: "run-9",
+        turnId: "turn-3",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    },
+  });
+
+  assert.equal(event.skillName, "gh-issue-pr-iterations");
+  assert.equal(event.skillId, "gh-issue-pr-iterations");
+  assert.equal(event.triggerAnchor, "turn-3");
+  assert.equal(event.usageSpaceId, "install-1");
+});
+
+test("JsonlSkillUsageStore records attempts while deduping first triggers", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-store-"));
+
+  try {
+    const store = new JsonlSkillUsageStore({ rootDir: tempDir });
+    const baseEvent = {
+      schemaVersion: 1,
+      eventType: "skill_usage",
+      eventKey: "event-1",
+      installationId: "install-1",
+      usageSpaceId: "install-1",
+      triggerAnchor: "run-1",
+      observedAt: "2026-03-07T10:00:00.000Z",
+      status: "ok",
+      latencyMs: 3,
+      skillId: "git-pr",
+      skillName: "git-pr",
+    };
+
+    const first = await store.record(baseEvent);
+    const second = await store.record({
+      ...baseEvent,
+      observedAt: "2026-03-07T10:00:02.000Z",
+    });
+
+    assert.equal(first.firstTrigger, true);
+    assert.equal(second.firstTrigger, false);
+    assert.equal(second.attempts, 2);
+
+    const events = await store.readAllEvents();
+    assert.equal(events.length, 2);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("plugin records one trigger for repeated skill reads in the same run", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-plugin-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({
+      api: createApi(tempDir),
+    });
+
+    const baseBefore = {
+      toolName: "read",
+      params: {
+        path: "/Users/demo/.codex/skills/git-pr/SKILL.md",
+      },
+      context: {
+        agentId: "main",
+        runId: "run-1",
+        sessionId: "session-1",
+        timestamp: "2026-03-07T10:00:00.000Z",
+      },
+    };
+
+    const baseAfter = {
+      toolName: "read",
+      ok: true,
+      result: {
+        content: "---\nname: git-pr\n---\n# Git PR\n",
+      },
+      context: {
+        agentId: "main",
+        runId: "run-1",
+        sessionId: "session-1",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    };
+
+    await plugin.onBeforeToolCall({
+      ...baseBefore,
+      toolCallId: "call-1",
+    });
+    const first = await plugin.onAfterToolCall({
+      ...baseAfter,
+      toolCallId: "call-1",
+    });
+
+    await plugin.onBeforeToolCall({
+      ...baseBefore,
+      toolCallId: "call-2",
+      context: {
+        ...baseBefore.context,
+        timestamp: "2026-03-07T10:00:02.000Z",
+      },
+    });
+    const second = await plugin.onAfterToolCall({
+      ...baseAfter,
+      toolCallId: "call-2",
+      context: {
+        ...baseAfter.context,
+        timestamp: "2026-03-07T10:00:03.000Z",
+      },
+    });
+
+    assert.equal(first.firstTrigger, true);
+    assert.equal(second.firstTrigger, false);
+
+    const events = await plugin.store.readAllEvents();
+    assert.equal(events.length, 2);
+    assert.equal(events[0].eventKey, events[1].eventKey);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
