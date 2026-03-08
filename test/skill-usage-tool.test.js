@@ -5,8 +5,11 @@ import { executeSkillUsageTool } from "../src/lib/skill-usage-tool.js";
 test("skill usage tool renders top rankings", async () => {
   const result = await executeSkillUsageTool({
     cloud: {
-      async queryTopSkills() {
+      async queryTopSkillsWithFallback() {
         return {
+          source: "cloud",
+          cloudState: "healthy",
+          aggregationScope: "usage-space",
           period: { label: "30 days" },
           rows: [
             {
@@ -36,8 +39,11 @@ test("skill usage tool renders top rankings", async () => {
 test("skill usage tool renders status output", async () => {
   const result = await executeSkillUsageTool({
     cloud: {
-      async getStatus() {
+      async getStatusWithFallback() {
         return {
+          source: "cloud",
+          cloudState: "healthy",
+          aggregationScope: "usage-space",
           usageSpaceId: "space-1",
           usageSpaceSource: "joined",
           databaseName: "openclaw_skill_usage",

@@ -33,7 +33,7 @@ export async function runSkillUsageCommand({ cloud, args }) {
 
   switch (command.toLowerCase()) {
     case "status": {
-      const status = await cloud.getStatus();
+      const status = await cloud.getStatusWithFallback();
       return {
         text: formatStatus(status),
       };
@@ -51,7 +51,7 @@ export async function runSkillUsageCommand({ cloud, args }) {
         throw new Error(`Unknown period "${rest[0]}". Use 1d, 7d, 30d, or all.`);
       }
 
-      const result = await cloud.queryTopSkills({
+      const result = await cloud.queryTopSkillsWithFallback({
         periodKey,
       });
       return {

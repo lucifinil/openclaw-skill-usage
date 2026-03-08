@@ -313,8 +313,11 @@ test("join, leave, and delete flows update usage spaces", async () => {
 
 test("command handler returns top rankings and join tokens", async () => {
   const cloud = {
-    async queryTopSkills() {
+    async queryTopSkillsWithFallback() {
       return {
+        source: "cloud",
+        cloudState: "healthy",
+        aggregationScope: "usage-space",
         period: { label: "7 days" },
         rows: [
           {
@@ -331,8 +334,11 @@ test("command handler returns top rankings and join tokens", async () => {
     async createJoinToken() {
       return "ocsu1_token";
     },
-    async getStatus() {
+    async getStatusWithFallback() {
       return {
+        source: "cloud",
+        cloudState: "healthy",
+        aggregationScope: "usage-space",
         usageSpaceId: "space-1",
         usageSpaceSource: "local",
         databaseName: "openclaw_skill_usage",
@@ -363,4 +369,84 @@ test("command handler returns top rankings and join tokens", async () => {
     args: "join-token",
   });
   assert.match(token.text, /ocsu1_token/);
+});
+
+test("cloud falls back to local analytics when top queries fail", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.store.initialize();
+    await cloud.store.record({
+      eventKey: "event-1",
+      attempts: 1,
+      firstTrigger: true,
+      firstObservedAt: "2026-03-07T10:00:00.000Z",
+      installationId: "install-1",
+      agentId: "main",
+      runId: "run-1",
+      sessionScope: "main",
+      skillId: "git-pr",
+      skillName: "git-pr",
+      skillSource: "user",
+      status: "ok",
+      observedAt: "2026-03-07T10:00:00.000Z",
+      triggerAnchor: "turn-1",
+    });
+
+    cloud.queryTopSkills = async () => {
+      throw new Error("network down");
+    };
+
+    const result = await cloud.queryTopSkillsWithFallback({
+      periodKey: "all",
+      limit: 10,
+    });
+
+    assert.equal(result.source, "local");
+    assert.equal(result.cloudState, "local-only");
+    assert.equal(result.rows[0].skillName, "git-pr");
+    assert.match(result.degradedReason, /network down/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("cloud falls back to local status when sync fails", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.store.initialize();
+    await cloud.store.record({
+      eventKey: "event-1",
+      attempts: 1,
+      firstTrigger: true,
+      firstObservedAt: "2026-03-07T10:00:00.000Z",
+      installationId: "install-1",
+      agentId: "main",
+      runId: "run-1",
+      sessionScope: "main",
+      skillId: "git-pr",
+      skillName: "git-pr",
+      skillSource: "user",
+      status: "ok",
+      observedAt: "2026-03-07T10:00:00.000Z",
+      triggerAnchor: "turn-1",
+    });
+
+    cloud.getStatus = async () => {
+      throw new Error("zero unavailable");
+    };
+
+    const status = await cloud.getStatusWithFallback();
+
+    assert.equal(status.source, "local");
+    assert.equal(status.summary.totalTriggers, 1);
+    assert.match(status.degradedReason, /zero unavailable/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 });

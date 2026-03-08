@@ -5,6 +5,7 @@ import { readJson, writeJsonAtomic } from "./plugin-config.js";
 import { TiDBUsageRepository } from "./tidb-usage-repository.js";
 import { encodeUsageSpaceToken, decodeUsageSpaceToken } from "./usage-space-token.js";
 import { provisionZeroInstance } from "./zero-client.js";
+import { LocalUsageAnalytics } from "./local-usage-analytics.js";
 
 function noop() {}
 
@@ -72,6 +73,9 @@ export class SkillUsageCloud {
     this.repository = null;
     this.repositoryKey = null;
     this.syncQueue = Promise.resolve();
+    this.localAnalytics = new LocalUsageAnalytics({
+      store: this.store,
+    });
   }
 
   async initialize() {
@@ -205,6 +209,36 @@ export class SkillUsageCloud {
     };
   }
 
+  async queryTopSkillsWithFallback({ periodKey = "all", limit = 10 } = {}) {
+    try {
+      const result = await this.queryTopSkills({
+        periodKey,
+        limit,
+      });
+
+      return {
+        ...result,
+        source: "cloud",
+        cloudState: "healthy",
+        aggregationScope: "usage-space",
+        degradedReason: null,
+        usageSpaceId: this.cloudState.usageSpace.id,
+        usageSpaceSource: this.cloudState.usageSpace.source,
+      };
+    } catch (error) {
+      await this.initialize();
+
+      return this.localAnalytics.queryTopSkills({
+        periodKey,
+        limit,
+        usageSpaceId: this.cloudState.usageSpace.id,
+        usageSpaceSource: this.cloudState.usageSpace.source,
+        degradedReason: error.message,
+        cloudState: this.cloudState.zero ? "degraded" : "local-only",
+      });
+    }
+  }
+
   enqueueSync(reason = "event") {
     this.syncQueue = this.syncQueue
       .then(async () => this.syncAll())
@@ -240,6 +274,31 @@ export class SkillUsageCloud {
       zero: this.cloudState.zero,
       summary: sync.summary,
     };
+  }
+
+  async getStatusWithFallback() {
+    try {
+      const status = await this.getStatus();
+
+      return {
+        ...status,
+        source: "cloud",
+        cloudState: "healthy",
+        aggregationScope: "usage-space",
+        degradedReason: null,
+      };
+    } catch (error) {
+      await this.initialize();
+
+      return this.localAnalytics.querySummary({
+        usageSpaceId: this.cloudState.usageSpace.id,
+        usageSpaceSource: this.cloudState.usageSpace.source,
+        databaseName: this.cloudState.databaseName,
+        zero: this.cloudState.zero,
+        degradedReason: error.message,
+        cloudState: this.cloudState.zero ? "degraded" : "local-only",
+      });
+    }
   }
 
   async createJoinToken() {
