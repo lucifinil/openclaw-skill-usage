@@ -479,7 +479,7 @@ test("cloud top fallback display can fill missing agent/account breakdowns from 
               accountCount: 2,
               installations: [
                 {
-                  installationId: "install-1",
+                  installationId: "install-local",
                   installationLabel: "Mac-mini",
                   triggerCount: 19,
                   attemptCount: 19,
@@ -514,7 +514,7 @@ test("cloud top fallback display can fill missing agent/account breakdowns from 
           accountCount: 0,
           installations: [
             {
-              installationId: "install-1",
+              installationId: "install-cloud",
               installationLabel: "Mac-mini",
               triggerCount: 19,
               attemptCount: 19,
@@ -531,6 +531,7 @@ test("cloud top fallback display can fill missing agent/account breakdowns from 
     const result = await cloud.queryTopSkillsWithFallback({ periodKey: "1d", limit: 5 });
     assert.equal(result.rows[0].agentCount, 2);
     assert.equal(result.rows[0].accountCount, 2);
+    assert.equal(result.rows[0].installations[0].installationId, "install-cloud");
     assert.equal(result.rows[0].installations[0].agents.length, 2);
     assert.equal(result.rows[0].installations[0].accounts.length, 2);
   } finally {

@@ -9,10 +9,37 @@ import { LocalUsageAnalytics } from "./local-usage-analytics.js";
 
 function noop() {}
 
+function normalizeInstallationLabelKey(label) {
+  if (typeof label !== "string") {
+    return null;
+  }
+
+  const trimmed = label.trim();
+  return trimmed.length > 0 ? trimmed.toLowerCase() : null;
+}
+
 function mergeInstallationsForDisplay(baseInstallations = [], localInstallations = []) {
-  const localById = new Map(localInstallations.map((item) => [item.installationId, item]));
+  const localById = new Map();
+  const localByLabel = new Map();
+
+  for (const installation of localInstallations) {
+    if (installation?.installationId) {
+      localById.set(installation.installationId, installation);
+    }
+    const labelKey = normalizeInstallationLabelKey(installation?.installationLabel);
+    if (labelKey && !localByLabel.has(labelKey)) {
+      localByLabel.set(labelKey, installation);
+    }
+  }
+
   return baseInstallations.map((installation) => {
-    const local = localById.get(installation.installationId);
+    let local = installation?.installationId ? localById.get(installation.installationId) : null;
+    if (!local) {
+      const labelKey = normalizeInstallationLabelKey(installation?.installationLabel);
+      if (labelKey && localByLabel.has(labelKey)) {
+        local = localByLabel.get(labelKey);
+      }
+    }
     if (!local) {
       return installation;
     }
