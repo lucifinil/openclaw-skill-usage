@@ -443,6 +443,65 @@ test("plugin attributes channel bot usage with friendly aliases", async () => {
   }
 });
 
+test("plugin resolves snake_case routing fields for agent and channel account breakdowns", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-snake-case-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({
+      api: createApi(tempDir, {
+        config: {
+          botAliases: {
+            "discord:elon": "Discord / @team-bot",
+          },
+        },
+      }),
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-snake-case-1",
+      params: { path: "/Users/demo/.codex/skills/git-pr/SKILL.md" },
+      context: {
+        agent_id: "odin",
+        account_id: "elon",
+        account_name: "team-bot",
+        channel_id: "1480303286182608897",
+        platform: "discord",
+        run_id: "run-snake-case-1",
+        session_key: "agent:main:subagent:snake-case",
+        message_id: "msg-snake-case-1",
+        timestamp: "2026-03-07T10:00:00.000Z",
+      },
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-snake-case-1",
+      ok: true,
+      result: { content: "---\nname: git-pr\n---\n# Git PR\n" },
+      context: {
+        agent_id: "odin",
+        account_id: "elon",
+        account_name: "team-bot",
+        channel_id: "1480303286182608897",
+        platform: "discord",
+        run_id: "run-snake-case-1",
+        session_key: "agent:main:subagent:snake-case",
+        message_id: "msg-snake-case-1",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    });
+
+    assert.equal(record.agentId, "odin");
+    assert.equal(record.botKey, "discord:elon");
+    assert.equal(record.botLabel, "Discord / @team-bot");
+    assert.equal(record.botPlatform, "discord");
+    assert.equal(record.sessionKey, "agent:main:subagent:snake-case");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("plugin does not synthesize a channel account from agent id alone", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-account-"));
 
