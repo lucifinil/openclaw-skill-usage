@@ -6,6 +6,21 @@ export function formatExpiry(expiresAt) {
   return new Date(expiresAt).toISOString();
 }
 
+function formatBotBreakdownLines(bots) {
+  if (!Array.isArray(bots) || bots.length === 0) {
+    return [];
+  }
+
+  const lines = ["      bot split:"];
+
+  bots.forEach((bot) => {
+    lines.push(`      ${bot.botLabel} - ${bot.triggerCount} total triggers, ${bot.attemptCount} attempts`);
+    lines.push(`         scope split: main ${bot.mainTriggerCount ?? 0}, subagent ${bot.subagentTriggerCount ?? 0}`);
+  });
+
+  return lines;
+}
+
 function formatInstallationBreakdownLines(installations) {
   if (!Array.isArray(installations) || installations.length === 0) {
     return ["   by installation: none yet"];
@@ -20,6 +35,7 @@ function formatInstallationBreakdownLines(installations) {
     lines.push(
       `      scope split: main ${installation.mainTriggerCount ?? 0}, subagent ${installation.subagentTriggerCount ?? 0}`,
     );
+    lines.push(...formatBotBreakdownLines(installation.bots));
   });
 
   return lines;
@@ -81,7 +97,7 @@ export function formatStatus(status) {
     `members: ${status.summary.installationCount} installations, ${status.summary.agentCount} agents, ${status.summary.subagentRunCount} subagent runs`,
     `last observed at: ${status.summary.lastObservedAt ?? "none yet"}`,
     ...(status.degradedReason ? [`cloud status: ${status.degradedReason}`] : []),
-    "metadata sent: skill id/name, installation id/label, agent id, session scope, timestamps, status, latency",
+    "metadata sent: skill id/name, installation id/label, bot key/label/platform, agent id, session scope, timestamps, status, latency",
   ].join("\n");
 }
 

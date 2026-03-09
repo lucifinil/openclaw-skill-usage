@@ -11,15 +11,17 @@ import {
 import { createSkillUsagePlugin } from "../src/lib/skill-usage-plugin.js";
 
 function createApi(stateDir, overrides = {}) {
+  const pluginConfig = {
+    stateDir,
+    autoSync: overrides.autoSync ?? false,
+    ...(overrides.config ?? {}),
+  };
   const base = {
     config: {
       plugins: {
         entries: {
           "skill-usage": {
-            config: {
-              stateDir,
-              autoSync: overrides.autoSync ?? false,
-            },
+            config: pluginConfig,
           },
         },
       },
@@ -76,6 +78,9 @@ test("finalizeSkillObservation prefers declared skill names from frontmatter", (
     },
     context: {
       agentId: "main",
+      botId: "12345",
+      botName: "@sales-bot",
+      platform: "discord",
       runId: "run-9",
       turnId: "turn-3",
       timestamp: "2026-03-07T10:00:00.000Z",
@@ -94,6 +99,9 @@ test("finalizeSkillObservation prefers declared skill names from frontmatter", (
       },
       context: {
         agentId: "main",
+        botId: "12345",
+        botName: "@sales-bot",
+        platform: "discord",
         runId: "run-9",
         turnId: "turn-3",
         timestamp: "2026-03-07T10:00:01.000Z",
@@ -105,6 +113,9 @@ test("finalizeSkillObservation prefers declared skill names from frontmatter", (
   assert.equal(event.skillId, "gh-issue-pr-iterations");
   assert.equal(event.triggerAnchor, "turn-3");
   assert.equal(event.usageSpaceId, "install-1");
+  assert.equal(event.botId, "12345");
+  assert.equal(event.botName, "@sales-bot");
+  assert.equal(event.botPlatform, "discord");
 });
 
 test("JsonlSkillUsageStore records attempts while deduping first triggers", async () => {
@@ -378,6 +389,55 @@ test("plugin keeps subagent run mapping across plugin instances", async () => {
     });
 
     assert.equal(record.sessionScope, "subagent");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("plugin attributes channel bot usage with friendly aliases", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-bot-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({
+      api: createApi(tempDir, {
+        config: {
+          botAliases: {
+            "discord:channel:discord-room-1": "Discord / @sales-bot",
+          },
+        },
+      }),
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-bot-1",
+      params: { path: "/Users/demo/.codex/skills/git-pr/SKILL.md" },
+      context: {
+        agentId: "main",
+        channelId: "discord-room-1",
+        platform: "discord",
+        runId: "run-bot-1",
+        timestamp: "2026-03-07T10:00:00.000Z",
+      },
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-bot-1",
+      ok: true,
+      result: { content: "---\nname: git-pr\n---\n# Git PR\n" },
+      context: {
+        agentId: "main",
+        channelId: "discord-room-1",
+        platform: "discord",
+        runId: "run-bot-1",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    });
+
+    assert.equal(record.botKey, "discord:channel:discord-room-1");
+    assert.equal(record.botLabel, "Discord / @sales-bot");
+    assert.equal(record.botPlatform, "discord");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

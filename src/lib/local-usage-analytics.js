@@ -67,6 +67,14 @@ function resolveSubagentIdentityKey(event) {
   return null;
 }
 
+function sortBots(left, right) {
+  return (
+    right.triggerCount - left.triggerCount ||
+    right.attemptCount - left.attemptCount ||
+    left.botLabel.localeCompare(right.botLabel)
+  );
+}
+
 function summarizeRows(events) {
   const installations = new Set();
   const agents = new Set();
@@ -168,6 +176,7 @@ export class LocalUsageAnalytics {
           attemptCount: 0,
           mainTriggerCount: 0,
           subagentTriggerCount: 0,
+          bots: new Map(),
         };
       installationCurrent.attemptCount += 1;
       if (event.firstTrigger) {
@@ -177,6 +186,28 @@ export class LocalUsageAnalytics {
         } else {
           installationCurrent.mainTriggerCount += 1;
         }
+      }
+      if (event.botKey) {
+        const botCurrent =
+          installationCurrent.bots.get(event.botKey) ?? {
+            botKey: event.botKey,
+            botLabel: event.botLabel ?? event.botKey,
+            botPlatform: event.botPlatform ?? null,
+            triggerCount: 0,
+            attemptCount: 0,
+            mainTriggerCount: 0,
+            subagentTriggerCount: 0,
+          };
+        botCurrent.attemptCount += 1;
+        if (event.firstTrigger) {
+          botCurrent.triggerCount += 1;
+          if (event.sessionScope === "subagent") {
+            botCurrent.subagentTriggerCount += 1;
+          } else {
+            botCurrent.mainTriggerCount += 1;
+          }
+        }
+        installationCurrent.bots.set(event.botKey, botCurrent);
       }
       current.installations.set(installationId, installationCurrent);
 
@@ -203,7 +234,12 @@ export class LocalUsageAnalytics {
           installationCount: row.installationIds.size,
           agentCount: row.agentIds.size,
           subagentRunCount: row.subagentRunIds.size,
-          installations: Array.from(row.installations.values()).sort(sortInstallations),
+          installations: Array.from(row.installations.values())
+            .map((installation) => ({
+              ...installation,
+              bots: Array.from(installation.bots.values()).sort(sortBots),
+            }))
+            .sort(sortInstallations),
         }))
         .sort(
           (left, right) =>
