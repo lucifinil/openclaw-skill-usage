@@ -13,6 +13,7 @@ class FakeRepository {
     this.events = new Map();
     this.spaceMeta = new Map();
     this.installations = new Map();
+    this.upsertCalls = [];
   }
 
   async ensureUsageSpace({ usageSpaceId, installationId, zeroConfig, source }) {
@@ -32,6 +33,7 @@ class FakeRepository {
   }
 
   async upsertEvents(events) {
+    this.upsertCalls.push(events.map((event) => event.recordKey));
     events.forEach((event) => {
       this.events.set(event.recordKey, event);
     });
@@ -310,6 +312,7 @@ test("cloud sync provisions once and aggregates top skills", async () => {
   try {
     const repository = new FakeRepository();
     const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
     await cloud.store.initialize();
     await cloud.store.record({
       eventKey: "event-1",
@@ -455,6 +458,72 @@ test("cloud sync provisions once and aggregates top skills", async () => {
   }
 });
 
+test("cloud sync checkpoints upload only new local records and expose sync health", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
+    await cloud.store.initialize();
+    await cloud.store.record({
+      eventKey: "event-1",
+      attempts: 1,
+      firstTrigger: true,
+      firstObservedAt: "2026-03-07T10:00:00.000Z",
+      installationId: "install-1",
+      installationLabel: "Mac-mini",
+      agentId: "odin",
+      runId: "run-1",
+      sessionScope: "main",
+      skillId: "git-pr",
+      skillName: "git-pr",
+      skillSource: "user",
+      status: "ok",
+      observedAt: "2026-03-07T10:00:00.000Z",
+      triggerAnchor: "turn-1",
+    });
+
+    const first = await cloud.syncAll();
+    assert.equal(first.uploaded, 1);
+    assert.equal(first.sync.pendingLocalRecordCount, 0);
+    assert.ok(first.sync.lastSuccessfulSyncAt);
+    assert.deepEqual(repository.upsertCalls.map((batch) => batch.length), [1]);
+
+    const second = await cloud.syncAll();
+    assert.equal(second.uploaded, 0);
+    assert.deepEqual(repository.upsertCalls.map((batch) => batch.length), [1, 0]);
+
+    await cloud.store.record({
+      eventKey: "event-2",
+      attempts: 1,
+      firstTrigger: true,
+      firstObservedAt: "2026-03-07T10:05:00.000Z",
+      installationId: "install-1",
+      installationLabel: "Mac-mini",
+      agentId: "loki",
+      runId: "run-2",
+      sessionScope: "main",
+      skillId: "weather",
+      skillName: "weather",
+      skillSource: "user",
+      status: "ok",
+      observedAt: "2026-03-07T10:05:00.000Z",
+      triggerAnchor: "turn-2",
+    });
+
+    const pending = await cloud.getSyncStatus();
+    assert.equal(pending.pendingLocalRecordCount, 1);
+
+    const third = await cloud.syncAll();
+    assert.equal(third.uploaded, 1);
+    assert.equal(third.sync.pendingLocalRecordCount, 0);
+    assert.deepEqual(repository.upsertCalls.map((batch) => batch.length), [1, 0, 1]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("join, leave, and delete flows update usage spaces", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
 
@@ -462,6 +531,26 @@ test("join, leave, and delete flows update usage spaces", async () => {
     const repository = new FakeRepository();
     const cloud = createCloud(tempDir, repository);
     await cloud.initialize();
+    await cloud.store.initialize();
+    await cloud.store.record({
+      eventKey: "event-join-1",
+      attempts: 1,
+      firstTrigger: true,
+      firstObservedAt: "2026-03-07T10:00:00.000Z",
+      installationId: "install-1",
+      installationLabel: "Mac-mini",
+      agentId: "odin",
+      runId: "run-1",
+      sessionScope: "main",
+      skillId: "git-pr",
+      skillName: "git-pr",
+      skillSource: "user",
+      status: "ok",
+      observedAt: "2026-03-07T10:00:00.000Z",
+      triggerAnchor: "turn-1",
+    });
+    await cloud.syncAll();
+    assert.ok(cloud.cloudState.sync.checkpointOffset > 0);
 
     const token = encodeUsageSpaceToken({
       usageSpaceId: "shared-space",
@@ -481,15 +570,19 @@ test("join, leave, and delete flows update usage spaces", async () => {
 
     const joined = await cloud.joinUsageSpace(token);
     assert.equal(joined.usageSpaceId, "shared-space");
+    assert.equal(joined.sync.pendingLocalRecordCount, 0);
 
     const status = await cloud.getStatus();
     assert.equal(status.usageSpaceSource, "joined");
 
     const left = await cloud.leaveUsageSpace();
     assert.equal(left.usageSpaceId, "install-1");
+    assert.equal(left.sync.pendingLocalRecordCount, 0);
 
     const deleted = await cloud.deleteUsageSpaceData();
     assert.equal(deleted.nextStatus.usageSpaceId, "install-1");
+    assert.equal(deleted.nextStatus.sync.pendingLocalRecordCount, 0);
+    assert.equal(cloud.cloudState.sync.checkpointOffset, 0);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -587,6 +680,11 @@ test("command handler returns top rankings and join tokens", async () => {
           accountCount: 1,
           subagentRunCount: 1,
         },
+        sync: {
+          lastSuccessfulSyncAt: "2026-03-07T10:10:00.000Z",
+          pendingLocalRecordCount: 0,
+          lastError: null,
+        },
       };
     },
   };
@@ -610,6 +708,7 @@ test("cloud falls back to local analytics when top queries fail", async () => {
   try {
     const repository = new FakeRepository();
     const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
     await cloud.store.initialize();
     await cloud.store.record({
       eventKey: "event-1",
@@ -654,6 +753,7 @@ test("cloud falls back to local status when sync fails", async () => {
   try {
     const repository = new FakeRepository();
     const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
     await cloud.store.initialize();
     await cloud.store.record({
       eventKey: "event-1",
@@ -674,7 +774,9 @@ test("cloud falls back to local status when sync fails", async () => {
     });
 
     cloud.getStatus = async () => {
-      throw new Error("zero unavailable");
+      const error = new Error("zero unavailable");
+      await cloud.markSyncError(error);
+      throw error;
     };
 
     const status = await cloud.getStatusWithFallback();
@@ -682,6 +784,8 @@ test("cloud falls back to local status when sync fails", async () => {
     assert.equal(status.source, "local");
     assert.equal(status.summary.totalTriggers, 1);
     assert.equal(status.installationLabel, "Mac-mini");
+    assert.equal(status.sync.pendingLocalRecordCount, 1);
+    assert.match(status.sync.lastError, /zero unavailable/);
     assert.match(status.degradedReason, /zero unavailable/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

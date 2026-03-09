@@ -83,7 +83,7 @@ Agent: returns ranked skills from highest to lowest trigger count
 ```text
 /skillusage status
 /skillusage top [1d|7d|30d|all]
-/skillusage sync
+/skillusage sync [full]
 /skillusage join-token
 /skillusage join <token>
 /skillusage leave
@@ -105,6 +105,12 @@ On another installation:
 ```
 
 If TiDB Cloud Zero is unavailable, `/skillusage top ...` and `/skillusage status` fall back to this installation's local event buffer and tell you that the result is local-only or degraded. In that fallback mode, the installation breakdown only reflects the current installation because other installations live in the shared cloud view.
+
+Sync behavior:
+
+- normal syncs upload only the unsynced tail of the local JSONL event log
+- `/skillusage status` shows `last cloud sync`, `pending local records`, and `last sync error`
+- `/skillusage sync full` forces a full resync of the local event history into the current usage space
 
 ## Sharing model
 
@@ -255,6 +261,9 @@ claim URL: https://...
 synced totals: 38 triggers, 45 attempts
 members: 2 installations, 3 agents, 3 channel accounts
 last observed at: 2026-03-08T07:40:00.000Z
+last cloud sync: 2026-03-08T07:40:02.000Z
+pending local records: 0
+last sync error: none
 metadata sent: skill id/name, installation id/label, channel account key/label/platform, agent id, routing/session identifiers, timestamps, status, latency
 ```
 

@@ -44,6 +44,8 @@ export async function runSkillUsageCommand({ cloud, args }) {
         [`cloud source`, status.source === "cloud" ? "ok" : "degraded/local"],
         [`totals`, `${status.summary.totalTriggers} triggers / ${status.summary.totalAttempts} attempts`],
         [`last observed`, status.summary.lastObservedAt ?? "none yet"],
+        [`last cloud sync`, status.sync?.lastSuccessfulSyncAt ?? "none yet"],
+        [`pending local records`, `${status.sync?.pendingLocalRecordCount ?? 0}`],
       ];
 
       const hints = [];
@@ -51,7 +53,9 @@ export async function runSkillUsageCommand({ cloud, args }) {
         hints.push("No skill events yet. Trigger any skill by reading a SKILL.md (for example weather or skill-vetter).");
         hints.push("If events stay at zero, verify hooks are registered in this runtime (before_tool_call/after_tool_call).");
       }
-      if (status.degradedReason) {
+      if (status.sync?.lastError) {
+        hints.push(`Last sync error: ${status.sync.lastError}`);
+      } else if (status.degradedReason) {
         hints.push(`Cloud degraded: ${status.degradedReason}`);
       }
 
@@ -64,9 +68,12 @@ export async function runSkillUsageCommand({ cloud, args }) {
       };
     }
     case "sync": {
-      const sync = await cloud.syncAll();
+      const forceFull = rest[0]?.toLowerCase() === "full" || rest[0]?.toLowerCase() === "--full";
+      const sync = await cloud.syncAll({
+        forceFull,
+      });
       return {
-        text: `Synced ${sync.uploaded} local records into usage space ${sync.usageSpaceId}. Totals: ${sync.summary.totalTriggers} triggers, ${sync.summary.totalAttempts} attempts.`,
+        text: `${forceFull ? "Full resync completed." : "Sync completed."} Uploaded ${sync.uploaded} local records into usage space ${sync.usageSpaceId}. Pending local records: ${sync.sync?.pendingLocalRecordCount ?? 0}. Totals: ${sync.summary.totalTriggers} triggers, ${sync.summary.totalAttempts} attempts.`,
       };
     }
     case "top": {
