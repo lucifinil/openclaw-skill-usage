@@ -81,6 +81,7 @@ class FakeRepository {
           attemptCount: 0,
           mainTriggerCount: 0,
           subagentTriggerCount: 0,
+          bots: new Map(),
         };
       installationCurrent.attemptCount += 1;
       if (event.firstTrigger) {
@@ -90,6 +91,28 @@ class FakeRepository {
         } else {
           installationCurrent.mainTriggerCount += 1;
         }
+      }
+      if (event.botKey) {
+        const botCurrent =
+          installationCurrent.bots.get(event.botKey) ?? {
+            botKey: event.botKey,
+            botLabel: event.botLabel ?? event.botKey,
+            botPlatform: event.botPlatform ?? null,
+            triggerCount: 0,
+            attemptCount: 0,
+            mainTriggerCount: 0,
+            subagentTriggerCount: 0,
+          };
+        botCurrent.attemptCount += 1;
+        if (event.firstTrigger) {
+          botCurrent.triggerCount += 1;
+          if (event.sessionScope === "subagent") {
+            botCurrent.subagentTriggerCount += 1;
+          } else {
+            botCurrent.mainTriggerCount += 1;
+          }
+        }
+        installationCurrent.bots.set(event.botKey, botCurrent);
       }
       current.installations.set(event.installationId, installationCurrent);
 
@@ -116,12 +139,22 @@ class FakeRepository {
           installationCount: row.installationIds.size,
           agentCount: row.agentIds.size,
           subagentRunCount: row.subagentRunIds.size,
-          installations: Array.from(row.installations.values()).sort(
-            (left, right) =>
-              right.triggerCount - left.triggerCount ||
-              right.attemptCount - left.attemptCount ||
-              left.installationLabel.localeCompare(right.installationLabel),
-          ),
+          installations: Array.from(row.installations.values())
+            .map((installation) => ({
+              ...installation,
+              bots: Array.from(installation.bots.values()).sort(
+                (left, right) =>
+                  right.triggerCount - left.triggerCount ||
+                  right.attemptCount - left.attemptCount ||
+                  left.botLabel.localeCompare(right.botLabel),
+              ),
+            }))
+            .sort(
+              (left, right) =>
+                right.triggerCount - left.triggerCount ||
+                right.attemptCount - left.attemptCount ||
+                left.installationLabel.localeCompare(right.installationLabel),
+            ),
         }))
         .sort(
           (left, right) =>
@@ -253,6 +286,9 @@ test("cloud sync provisions once and aggregates top skills", async () => {
       firstTrigger: true,
       firstObservedAt: "2026-03-07T10:00:00.000Z",
       installationId: "install-1",
+      botKey: "discord:123",
+      botLabel: "Discord / @sales-bot",
+      botPlatform: "discord",
       agentId: "main",
       runId: "run-1",
       sessionScope: "main",
@@ -269,6 +305,9 @@ test("cloud sync provisions once and aggregates top skills", async () => {
       firstTrigger: false,
       firstObservedAt: "2026-03-07T10:00:00.000Z",
       installationId: "install-1",
+      botKey: "discord:123",
+      botLabel: "Discord / @sales-bot",
+      botPlatform: "discord",
       agentId: "main",
       runId: "run-1",
       sessionScope: "main",
@@ -342,6 +381,17 @@ test("cloud sync provisions once and aggregates top skills", async () => {
         attemptCount: 2,
         mainTriggerCount: 1,
         subagentTriggerCount: 0,
+        bots: [
+          {
+            botKey: "discord:123",
+            botLabel: "Discord / @sales-bot",
+            botPlatform: "discord",
+            triggerCount: 1,
+            attemptCount: 2,
+            mainTriggerCount: 1,
+            subagentTriggerCount: 0,
+          },
+        ],
       },
       {
         installationId: "install-2",
@@ -350,6 +400,7 @@ test("cloud sync provisions once and aggregates top skills", async () => {
         attemptCount: 1,
         mainTriggerCount: 1,
         subagentTriggerCount: 0,
+        bots: [],
       },
     ]);
   } finally {
@@ -421,6 +472,17 @@ test("command handler returns top rankings and join tokens", async () => {
                 attemptCount: 3,
                 mainTriggerCount: 1,
                 subagentTriggerCount: 1,
+                bots: [
+                  {
+                    botKey: "discord:123",
+                    botLabel: "Discord / @sales-bot",
+                    botPlatform: "discord",
+                    triggerCount: 2,
+                    attemptCount: 3,
+                    mainTriggerCount: 1,
+                    subagentTriggerCount: 1,
+                  },
+                ],
               },
               {
                 installationId: "install-2",
@@ -429,6 +491,7 @@ test("command handler returns top rankings and join tokens", async () => {
                 attemptCount: 1,
                 mainTriggerCount: 1,
                 subagentTriggerCount: 0,
+                bots: [],
               },
             ],
           },

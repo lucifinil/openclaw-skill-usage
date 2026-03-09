@@ -238,9 +238,59 @@ export function normalizeRunContext(payload) {
     payload?.isSubagent === true ||
     getNestedValue(payload, ["context", "isSubagent"]) === true ||
     getNestedValue(payload, ["session", "isSubagent"]) === true;
+  const botPlatform = firstString(
+    payload?.platform,
+    payload?.provider,
+    payload?.service,
+    getNestedString(payload, ["context", "platform"]),
+    getNestedString(payload, ["context", "provider"]),
+    getNestedString(payload, ["context", "service"]),
+    getNestedString(payload, ["channel", "platform"]),
+    getNestedString(payload, ["channel", "provider"]),
+    getNestedString(payload, ["bot", "platform"]),
+    getNestedString(payload, ["account", "platform"]),
+    getNestedString(payload, ["connector", "platform"]),
+    getNestedString(payload, ["connector", "type"]),
+    getNestedString(payload, ["integration", "platform"]),
+    getNestedString(payload, ["integration", "provider"]),
+    getNestedString(payload, ["transport", "platform"]),
+  );
+  const botId = firstString(
+    payload?.botId,
+    getNestedString(payload, ["context", "botId"]),
+    getNestedString(payload, ["bot", "id"]),
+    getNestedString(payload, ["account", "id"]),
+    getNestedString(payload, ["context", "bot", "id"]),
+    getNestedString(payload, ["context", "account", "id"]),
+    getNestedString(payload, ["channel", "botId"]),
+    getNestedString(payload, ["channel", "accountId"]),
+    getNestedString(payload, ["connector", "botId"]),
+    getNestedString(payload, ["connector", "accountId"]),
+    getNestedString(payload, ["integration", "botId"]),
+    getNestedString(payload, ["integration", "accountId"]),
+  );
+  const botName = firstString(
+    payload?.botName,
+    getNestedString(payload, ["context", "botName"]),
+    getNestedString(payload, ["bot", "name"]),
+    getNestedString(payload, ["bot", "username"]),
+    getNestedString(payload, ["account", "name"]),
+    getNestedString(payload, ["account", "username"]),
+    getNestedString(payload, ["context", "bot", "name"]),
+    getNestedString(payload, ["context", "account", "name"]),
+    getNestedString(payload, ["channel", "botName"]),
+    getNestedString(payload, ["channel", "accountName"]),
+    getNestedString(payload, ["connector", "botName"]),
+    getNestedString(payload, ["connector", "accountName"]),
+    getNestedString(payload, ["integration", "botName"]),
+    getNestedString(payload, ["integration", "accountName"]),
+  );
 
   return {
     agentId,
+    botId,
+    botName,
+    botPlatform,
     runId: firstString(
       payload?.runId,
       getNestedString(payload, ["context", "runId"]),
@@ -292,6 +342,9 @@ export function normalizeRunContext(payload) {
 export function mergeRunContexts(primary, secondary) {
   return {
     agentId: primary.agentId ?? secondary.agentId,
+    botId: primary.botId ?? secondary.botId,
+    botName: primary.botName ?? secondary.botName,
+    botPlatform: primary.botPlatform ?? secondary.botPlatform,
     runId: primary.runId ?? secondary.runId,
     sessionId: primary.sessionId ?? secondary.sessionId,
     sessionKey: primary.sessionKey ?? secondary.sessionKey,

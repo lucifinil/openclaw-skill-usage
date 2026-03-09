@@ -11,6 +11,7 @@ Use the `skill_usage_stats` tool when the user asks about:
 - rankings for `1d`, `7d`, `30d`, or `all`
 - how usage is shared across installations, agents, or subagent runs
 - which installations contributed to a skill's total and by how much
+- which bot accounts inside an installation contributed to a skill's total
 - whether counts are local-only or joined into a shared usage space
 
 Defaults:

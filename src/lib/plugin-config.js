@@ -8,6 +8,7 @@ const DEFAULT_DATABASE_NAME = "openclaw_skill_usage";
 const DEFAULT_PROVISION_TAG = "openclaw-skill-usage";
 const DEFAULT_INSTALLATION_LABEL_PREFIX = "installation";
 const MAX_INSTALLATION_LABEL_LENGTH = 80;
+const MAX_BOT_LABEL_LENGTH = 120;
 
 function getPluginEntryConfig(api) {
   return api?.config?.plugins?.entries?.[PLUGIN_ID]?.config ?? {};
@@ -35,6 +36,7 @@ export function resolvePluginOptions(api) {
       typeof entryConfig.installationLabel === "string" && entryConfig.installationLabel.trim().length > 0
         ? normalizeInstallationLabel(entryConfig.installationLabel)
         : null,
+    botAliases: normalizeBotAliases(entryConfig.botAliases),
   };
 }
 
@@ -76,12 +78,32 @@ export async function writeJsonAtomic(filePath, value) {
 }
 
 export function normalizeInstallationLabel(value) {
+  return normalizeDisplayLabel(value, MAX_INSTALLATION_LABEL_LENGTH);
+}
+
+export function normalizeBotLabel(value) {
+  return normalizeDisplayLabel(value, MAX_BOT_LABEL_LENGTH);
+}
+
+function normalizeDisplayLabel(value, maxLength) {
   if (typeof value !== "string") {
     return null;
   }
 
   const normalized = value.trim().replace(/\s+/g, " ");
-  return normalized.length > 0 ? normalized.slice(0, MAX_INSTALLATION_LABEL_LENGTH) : null;
+  return normalized.length > 0 ? normalized.slice(0, maxLength) : null;
+}
+
+function normalizeBotAliases(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, label]) => [typeof key === "string" ? key.trim() : "", normalizeBotLabel(label)])
+      .filter(([key, label]) => key.length > 0 && label),
+  );
 }
 
 function defaultInstallationLabel(installationId) {

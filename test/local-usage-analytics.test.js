@@ -19,6 +19,9 @@ test("local analytics ranks skills across all time", async () => {
         installationId: "install-1",
         installationLabel: "Mac-mini",
         agentId: "main",
+        botKey: "discord:123",
+        botLabel: "Discord / @sales-bot",
+        botPlatform: "discord",
         sessionScope: "main",
         runId: "run-1",
         skillId: "git-pr",
@@ -30,6 +33,9 @@ test("local analytics ranks skills across all time", async () => {
         installationId: "install-1",
         installationLabel: "Mac-mini",
         agentId: "main",
+        botKey: "discord:123",
+        botLabel: "Discord / @sales-bot",
+        botPlatform: "discord",
         sessionScope: "main",
         runId: "run-1",
         skillId: "git-pr",
@@ -68,6 +74,17 @@ test("local analytics ranks skills across all time", async () => {
       attemptCount: 2,
       mainTriggerCount: 1,
       subagentTriggerCount: 0,
+      bots: [
+        {
+          botKey: "discord:123",
+          botLabel: "Discord / @sales-bot",
+          botPlatform: "discord",
+          triggerCount: 1,
+          attemptCount: 2,
+          mainTriggerCount: 1,
+          subagentTriggerCount: 0,
+        },
+      ],
     },
   ]);
 });

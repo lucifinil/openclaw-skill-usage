@@ -17,6 +17,7 @@ The product idea is simple:
 - auto-provisions TiDB Cloud Zero on first sync
 - shares counts across multiple OpenClaw installations with a join token
 - shows each skill's total first, then a per-installation breakdown using installation labels
+- for channel-based deployments, can also split each installation by bot account
 - keeps local-first defaults: one installation starts in its own usage space automatically
 - exposes both a slash command and an agent tool
 
@@ -134,7 +135,11 @@ If you want a custom installation label instead of the hostname-derived default,
       "skill-usage": {
         "enabled": true,
         "config": {
-          "installationLabel": "MBP"
+          "installationLabel": "MBP",
+          "botAliases": {
+            "discord:channel:discord-room-1": "Discord / @sales-bot",
+            "telegram:channel:telegram-room-1": "Telegram / @alerts-bot"
+          }
         }
       }
     }
@@ -142,12 +147,19 @@ If you want a custom installation label instead of the hostname-derived default,
 }
 ```
 
+Bot attribution rules:
+
+- if the runtime exposes a bot/account id, that becomes the stable bot key
+- if the runtime only exposes a channel identity, the plugin falls back to a channel-bound bot key
+- `botAliases` lets you turn those stable keys into the bot account names you actually want to see in rankings
+
 ## Privacy model
 
 Only non-sensitive metadata is synced:
 
 - skill id and skill name
 - installation id and installation label
+- bot id/key, bot label, and platform when available
 - agent id
 - session scope (`main` or `subagent`)
 - turn, message, request, and channel ids when available
@@ -182,18 +194,35 @@ scope: current usage space
    by installation:
    Mac-mini - 10 total triggers, 12 attempts
       scope split: main 6, subagent 4
+      bot split:
+      Discord / @sales-bot - 7 total triggers, 8 attempts
+         scope split: main 4, subagent 3
+      Telegram / @alerts-bot - 3 total triggers, 4 attempts
+         scope split: main 2, subagent 1
    MBP - 8 total triggers, 10 attempts
       scope split: main 5, subagent 3
+      bot split:
+      Discord / @community-bot - 8 total triggers, 10 attempts
+         scope split: main 5, subagent 3
 2. git-pr - total 11 triggers, 12 attempts
    by installation:
    Mac-mini - 7 total triggers, 7 attempts
       scope split: main 5, subagent 2
+      bot split:
+      Discord / @sales-bot - 7 total triggers, 7 attempts
+         scope split: main 5, subagent 2
    MBP - 4 total triggers, 5 attempts
       scope split: main 3, subagent 1
+      bot split:
+      Telegram / @alerts-bot - 4 total triggers, 5 attempts
+         scope split: main 3, subagent 1
 3. prepare-svp-weekly-report - total 4 triggers, 4 attempts
    by installation:
    Mac-mini - 4 total triggers, 4 attempts
       scope split: main 4, subagent 0
+      bot split:
+      Discord / @sales-bot - 4 total triggers, 4 attempts
+         scope split: main 4, subagent 0
 ```
 
 ```text
@@ -209,7 +238,7 @@ claim URL: https://...
 synced totals: 38 triggers, 45 attempts
 members: 2 installations, 3 agents, 6 subagent runs
 last observed at: 2026-03-08T07:40:00.000Z
-metadata sent: skill id/name, installation id/label, agent id, session scope, timestamps, status, latency
+metadata sent: skill id/name, installation id/label, bot key/label/platform, agent id, session scope, timestamps, status, latency
 ```
 
 ## Why this can become a default plugin

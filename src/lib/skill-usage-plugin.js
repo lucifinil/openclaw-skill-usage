@@ -2,6 +2,7 @@ import path from "node:path";
 import { JsonlSkillUsageStore } from "./local-event-store.js";
 import {
   ensureInstallationIdentity,
+  normalizeBotLabel,
   resolvePluginOptions,
   resolvePluginSlots,
 } from "./plugin-config.js";
@@ -26,6 +27,65 @@ const MEMORY_TOOL_NAMES = new Set([
   "memory_update",
   "memory_delete",
 ]);
+
+function formatPlatformLabel(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function normalizeBotPlatform(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  return value.trim().toLowerCase();
+}
+
+function resolveBotIdentity({ event, botAliases }) {
+  const botPlatform = normalizeBotPlatform(event.botPlatform);
+  const botId = normalizeBotLabel(event.botId);
+  const botName = normalizeBotLabel(event.botName);
+  const channelId = normalizeBotLabel(event.channelId);
+  const agentId = normalizeBotLabel(event.agentId);
+  let botKey = null;
+  let defaultLabel = null;
+
+  if (botId) {
+    botKey = [botPlatform, botId].filter(Boolean).join(":");
+    defaultLabel = botName ?? botId;
+  } else if (botName) {
+    botKey = [botPlatform, `name:${botName.toLowerCase()}`].filter(Boolean).join(":");
+    defaultLabel = botName;
+  } else if (channelId) {
+    botKey = [botPlatform, `channel:${channelId}`].filter(Boolean).join(":");
+    defaultLabel = `channel:${channelId}`;
+  } else if (agentId && !agentId.toLowerCase().includes("subagent")) {
+    botKey = `agent:${agentId}`;
+    defaultLabel = agentId;
+  }
+
+  if (!botKey) {
+    return {
+      botKey: null,
+      botLabel: null,
+      botPlatform,
+    };
+  }
+
+  const aliasedLabel = botAliases?.[botKey] ?? null;
+  const label = aliasedLabel ?? defaultLabel ?? botKey;
+  const platformLabel = formatPlatformLabel(botPlatform);
+
+  return {
+    botKey,
+    botLabel: aliasedLabel ?? (platformLabel ? `${platformLabel} / ${label}` : label),
+    botPlatform,
+  };
+}
 
 function tryCaptureSubagentRunId(payload) {
   const toolName = normalizeToolName(payload);
@@ -187,10 +247,17 @@ export class SkillUsagePlugin {
     ) {
       event.sessionScope = "subagent";
     }
+    const botIdentity = resolveBotIdentity({
+      event,
+      botAliases: this.options.botAliases,
+    });
 
     const record = await this.store.record({
       ...event,
       installationLabel: this.installationIdentity.installationLabel,
+      botKey: botIdentity.botKey,
+      botLabel: botIdentity.botLabel,
+      botPlatform: botIdentity.botPlatform,
     });
 
     this.logger.debug?.("Recorded skill usage event", {

@@ -27,6 +27,17 @@ test("skill usage tool renders top rankings", async () => {
                 attemptCount: 4,
                 mainTriggerCount: 2,
                 subagentTriggerCount: 1,
+                bots: [
+                  {
+                    botKey: "discord:123",
+                    botLabel: "Discord / @sales-bot",
+                    botPlatform: "discord",
+                    triggerCount: 3,
+                    attemptCount: 4,
+                    mainTriggerCount: 2,
+                    subagentTriggerCount: 1,
+                  },
+                ],
               },
               {
                 installationId: "install-2",
@@ -35,6 +46,7 @@ test("skill usage tool renders top rankings", async () => {
                 attemptCount: 2,
                 mainTriggerCount: 2,
                 subagentTriggerCount: 0,
+                bots: [],
               },
             ],
           },
@@ -54,6 +66,8 @@ test("skill usage tool renders top rankings", async () => {
   assert.match(result.content[0].text, /git-pr/);
   assert.match(result.content[0].text, /Mac-mini - 3 total triggers, 4 attempts/);
   assert.match(result.content[0].text, /scope split: main 2, subagent 1/);
+  assert.match(result.content[0].text, /bot split:/);
+  assert.match(result.content[0].text, /Discord \/ @sales-bot - 3 total triggers, 4 attempts/);
   assert.match(result.content[0].text, /MBP - 2 total triggers, 2 attempts/);
   assert.match(result.content[0].text, /scope split: main 2, subagent 0/);
 });

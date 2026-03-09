@@ -81,6 +81,14 @@ function sortInstallations(left, right) {
   );
 }
 
+function sortBots(left, right) {
+  return (
+    right.triggerCount - left.triggerCount ||
+    right.attemptCount - left.attemptCount ||
+    left.botLabel.localeCompare(right.botLabel)
+  );
+}
+
 export class TiDBUsageRepository {
   constructor({ zeroConfig, databaseName, connectionFactory = defaultConnectionFactory }) {
     this.zeroConfig = zeroConfig;
@@ -140,6 +148,9 @@ export class TiDBUsageRepository {
         message_id VARCHAR(191) NULL,
         request_id VARCHAR(191) NULL,
         channel_id VARCHAR(191) NULL,
+        bot_key VARCHAR(255) NULL,
+        bot_label VARCHAR(255) NULL,
+        bot_platform VARCHAR(64) NULL,
         skill_id VARCHAR(191) NOT NULL,
         skill_name VARCHAR(255) NOT NULL,
         skill_source VARCHAR(32) NOT NULL,
@@ -152,10 +163,27 @@ export class TiDBUsageRepository {
         UNIQUE KEY ux_event_attempt (event_key, attempts),
         KEY idx_usage_space_period (usage_space_id, observed_at),
         KEY idx_usage_space_skill_period (usage_space_id, skill_id, observed_at),
+        KEY idx_usage_space_bot_period (usage_space_id, bot_key, observed_at),
         KEY idx_installation_period (installation_id, observed_at),
         KEY idx_agent_period (agent_id, observed_at),
         KEY idx_session_scope_period (session_scope, observed_at)
       )`,
+    );
+    await this.connection.query(
+      `ALTER TABLE skill_usage_events
+        ADD COLUMN IF NOT EXISTS bot_key VARCHAR(255) NULL`,
+    );
+    await this.connection.query(
+      `ALTER TABLE skill_usage_events
+        ADD COLUMN IF NOT EXISTS bot_label VARCHAR(255) NULL`,
+    );
+    await this.connection.query(
+      `ALTER TABLE skill_usage_events
+        ADD COLUMN IF NOT EXISTS bot_platform VARCHAR(64) NULL`,
+    );
+    await this.connection.query(
+      `ALTER TABLE skill_usage_events
+        ADD INDEX IF NOT EXISTS idx_usage_space_bot_period (usage_space_id, bot_key, observed_at)`,
     );
 
     this.ready = true;
@@ -232,6 +260,9 @@ export class TiDBUsageRepository {
             message_id,
             request_id,
             channel_id,
+            bot_key,
+            bot_label,
+            bot_platform,
             skill_id,
             skill_name,
             skill_source,
@@ -240,7 +271,7 @@ export class TiDBUsageRepository {
             observed_at,
             first_observed_at,
             trigger_anchor
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             record_key = record_key`,
           [
@@ -259,6 +290,9 @@ export class TiDBUsageRepository {
             event.messageId,
             event.requestId,
             event.channelId,
+            event.botKey,
+            event.botLabel,
+            event.botPlatform,
             event.skillId,
             event.skillName,
             event.skillSource,
@@ -336,18 +370,60 @@ export class TiDBUsageRepository {
       [usageSpaceId, ...skillIds],
     );
     const installationsBySkill = new Map();
+    const installationLookup = new Map();
 
     installationRows.forEach((row) => {
       const current = installationsBySkill.get(row.skillId) ?? [];
-      current.push({
+      const installation = {
         installationId: row.installationId,
         installationLabel: row.installationLabel,
         triggerCount: Number(row.triggerCount ?? 0),
         attemptCount: Number(row.attemptCount ?? 0),
         mainTriggerCount: Number(row.mainTriggerCount ?? 0),
         subagentTriggerCount: Number(row.subagentTriggerCount ?? 0),
-      });
+        bots: [],
+      };
+      current.push(installation);
       installationsBySkill.set(row.skillId, current);
+      installationLookup.set(`${row.skillId}:${row.installationId}`, installation);
+    });
+    const [botRows] = await this.connection.query(
+      `SELECT
+        skill_id AS skillId,
+        installation_id AS installationId,
+        bot_key AS botKey,
+        MAX(COALESCE(bot_label, bot_key)) AS botLabel,
+        MAX(bot_platform) AS botPlatform,
+        SUM(CASE WHEN first_trigger THEN 1 ELSE 0 END) AS triggerCount,
+        COUNT(*) AS attemptCount,
+        SUM(CASE WHEN first_trigger AND session_scope = 'subagent' THEN 1 ELSE 0 END) AS subagentTriggerCount,
+        SUM(CASE WHEN first_trigger AND session_scope <> 'subagent' THEN 1 ELSE 0 END) AS mainTriggerCount
+      FROM skill_usage_events
+      WHERE usage_space_id = ?
+      ${period.where}
+      AND skill_id IN (${placeholders})
+      AND bot_key IS NOT NULL
+      GROUP BY skill_id, installation_id, bot_key
+      ORDER BY triggerCount DESC, attemptCount DESC, botLabel ASC`,
+      [usageSpaceId, ...skillIds],
+    );
+
+    botRows.forEach((row) => {
+      const installation = installationLookup.get(`${row.skillId}:${row.installationId}`);
+
+      if (!installation) {
+        return;
+      }
+
+      installation.bots.push({
+        botKey: row.botKey,
+        botLabel: row.botLabel,
+        botPlatform: row.botPlatform,
+        triggerCount: Number(row.triggerCount ?? 0),
+        attemptCount: Number(row.attemptCount ?? 0),
+        mainTriggerCount: Number(row.mainTriggerCount ?? 0),
+        subagentTriggerCount: Number(row.subagentTriggerCount ?? 0),
+      });
     });
 
     return {
@@ -360,7 +436,12 @@ export class TiDBUsageRepository {
         installationCount: Number(row.installationCount ?? 0),
         agentCount: Number(row.agentCount ?? 0),
         subagentRunCount: Number(row.subagentRunCount ?? 0),
-        installations: (installationsBySkill.get(row.skillId) ?? []).sort(sortInstallations),
+        installations: (installationsBySkill.get(row.skillId) ?? [])
+          .map((installation) => ({
+            ...installation,
+            bots: installation.bots.sort(sortBots),
+          }))
+          .sort(sortInstallations),
       })),
     };
   }
