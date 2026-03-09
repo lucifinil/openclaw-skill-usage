@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { JsonlSkillUsageStore } from "../src/lib/local-event-store.js";
@@ -443,6 +443,65 @@ test("plugin attributes channel bot usage with friendly aliases", async () => {
   }
 });
 
+test("plugin resolves snake_case routing fields for agent and channel account breakdowns", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-snake-case-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({
+      api: createApi(tempDir, {
+        config: {
+          botAliases: {
+            "discord:elon": "Discord / @team-bot",
+          },
+        },
+      }),
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-snake-case-1",
+      params: { path: "/Users/demo/.codex/skills/git-pr/SKILL.md" },
+      context: {
+        agent_id: "odin",
+        account_id: "elon",
+        account_name: "team-bot",
+        channel_id: "1480303286182608897",
+        platform: "discord",
+        run_id: "run-snake-case-1",
+        session_key: "agent:main:subagent:snake-case",
+        message_id: "msg-snake-case-1",
+        timestamp: "2026-03-07T10:00:00.000Z",
+      },
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-snake-case-1",
+      ok: true,
+      result: { content: "---\nname: git-pr\n---\n# Git PR\n" },
+      context: {
+        agent_id: "odin",
+        account_id: "elon",
+        account_name: "team-bot",
+        channel_id: "1480303286182608897",
+        platform: "discord",
+        run_id: "run-snake-case-1",
+        session_key: "agent:main:subagent:snake-case",
+        message_id: "msg-snake-case-1",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    });
+
+    assert.equal(record.agentId, "odin");
+    assert.equal(record.botKey, "discord:elon");
+    assert.equal(record.botLabel, "Discord / @team-bot");
+    assert.equal(record.botPlatform, "discord");
+    assert.equal(record.sessionKey, "agent:main:subagent:snake-case");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("plugin does not synthesize a channel account from agent id alone", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-account-"));
 
@@ -479,6 +538,98 @@ test("plugin does not synthesize a channel account from agent id alone", async (
     assert.equal(record.botLabel, null);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("plugin backfills identity from session transcripts using runId", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "skill-usage-attribution-root-"));
+  const tempDir = path.join(tempRoot, "state", "plugins", "skill-usage");
+
+  try {
+    await mkdir(tempDir, { recursive: true });
+    const sessionDir = path.join(tempRoot, "agents", "main", "sessions");
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(
+      path.join(sessionDir, "sessions.json"),
+      JSON.stringify({
+        "agent:main:discord:channel:1480303286182608897": {
+          sessionId: "session-1",
+          deliveryContext: {
+            channel: "discord",
+            to: "channel:1480303286182608897",
+            accountId: "elon",
+          },
+          lastAccountId: "elon",
+        },
+      }, null, 2) + "\n",
+      "utf8",
+    );
+
+    await writeFile(
+      path.join(sessionDir, "session-1.jsonl"),
+      [
+        JSON.stringify({
+          type: "message",
+          sessionId: "session-1",
+          sessionKey: "agent:main:discord:channel:1480303286182608897",
+          agentId: "odin",
+          channelId: null,
+          accountId: null,
+          platform: "discord",
+          message: {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "/Users/demo/.codex/skills/git-pr/SKILL.md" } }],
+          },
+        }),
+        JSON.stringify({
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "call-1", name: "read", runId: "run-backfill-1" }],
+          },
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const plugin = createSkillUsagePlugin({
+      api: createApi(tempDir, {
+        config: {
+          botAliases: {
+            "discord:elon": "Discord / @team-bot",
+          },
+        },
+      }),
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-backfill-1",
+      params: { path: "/Users/demo/.codex/skills/git-pr/SKILL.md" },
+      context: {
+        runId: "run-backfill-1",
+        timestamp: "2026-03-07T10:00:00.000Z",
+      },
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-backfill-1",
+      ok: true,
+      result: { content: "---\nname: git-pr\n---\n# Git PR\n" },
+      context: {
+        runId: "run-backfill-1",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    });
+
+    assert.equal(record.agentId, "odin");
+    assert.equal(record.sessionKey, "agent:main:discord:channel:1480303286182608897");
+    assert.equal(record.channelId, "1480303286182608897");
+    assert.equal(record.botKey, "discord:elon");
+    assert.equal(record.botLabel, "Discord / @team-bot");
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
   }
 });
 

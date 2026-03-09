@@ -78,6 +78,10 @@ function normalizeDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+function sqlValue(value) {
+  return value === undefined ? null : value;
+}
+
 function periodToSql(periodKey) {
   switch (periodKey) {
     case "1d":
@@ -285,12 +289,12 @@ export class TiDBUsageRepository {
           expires_at = VALUES(expires_at),
           source = VALUES(source)`,
         [
-          usageSpaceId,
-          installationId,
-          zeroConfig.instanceId,
-          zeroConfig.claimUrl,
-          normalizeDate(zeroConfig.expiresAt),
-          source,
+          sqlValue(usageSpaceId),
+          sqlValue(installationId),
+          sqlValue(zeroConfig.instanceId),
+          sqlValue(zeroConfig.claimUrl),
+          sqlValue(normalizeDate(zeroConfig.expiresAt)),
+          sqlValue(source),
         ],
       ),
     );
@@ -306,7 +310,7 @@ export class TiDBUsageRepository {
         ) VALUES (?, ?, ?)
         ON DUPLICATE KEY UPDATE
           installation_label = VALUES(installation_label)`,
-        [usageSpaceId, installationId, installationLabel],
+        [sqlValue(usageSpaceId), sqlValue(installationId), sqlValue(installationLabel)],
       ),
     );
   }
@@ -355,32 +359,32 @@ export class TiDBUsageRepository {
             ON DUPLICATE KEY UPDATE
               record_key = record_key`,
             [
-              event.recordKey,
-              event.eventKey,
-              event.attempts,
-              event.firstTrigger,
-              event.usageSpaceId,
-              event.installationId,
-              event.agentId,
-              event.runId,
-              event.sessionId,
-              event.sessionKey,
-              event.sessionScope,
-              event.turnId,
-              event.messageId,
-              event.requestId,
-              event.channelId,
-              event.botKey,
-              event.botLabel,
-              event.botPlatform,
-              event.skillId,
-              event.skillName,
-              event.skillSource,
-              event.status,
-              event.latencyMs,
-              normalizeDate(event.observedAt),
-              normalizeDate(event.firstObservedAt),
-              event.triggerAnchor,
+              sqlValue(event.recordKey),
+              sqlValue(event.eventKey),
+              sqlValue(event.attempts),
+              sqlValue(event.firstTrigger),
+              sqlValue(event.usageSpaceId),
+              sqlValue(event.installationId),
+              sqlValue(event.agentId),
+              sqlValue(event.runId),
+              sqlValue(event.sessionId),
+              sqlValue(event.sessionKey),
+              sqlValue(event.sessionScope),
+              sqlValue(event.turnId),
+              sqlValue(event.messageId),
+              sqlValue(event.requestId),
+              sqlValue(event.channelId),
+              sqlValue(event.botKey),
+              sqlValue(event.botLabel),
+              sqlValue(event.botPlatform),
+              sqlValue(event.skillId),
+              sqlValue(event.skillName),
+              sqlValue(event.skillSource),
+              sqlValue(event.status),
+              sqlValue(event.latencyMs),
+              sqlValue(normalizeDate(event.observedAt)),
+              sqlValue(normalizeDate(event.firstObservedAt)),
+              sqlValue(event.triggerAnchor),
             ],
           );
         }

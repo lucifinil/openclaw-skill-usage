@@ -1,3 +1,19 @@
+import { enrichEventsWithResolver } from "./event-enricher.js";
+
+function dedupeEvents(events) {
+  const seen = new Set();
+  const deduped = [];
+  for (const event of events) {
+    const key = event?.eventKey ?? `${event?.skillId}|${event?.toolCallId}|${event?.observedAt}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(event);
+  }
+  return deduped;
+}
+
 function periodToThreshold(periodKey, now = new Date()) {
   const threshold = new Date(now);
 
@@ -127,12 +143,27 @@ function summarizeRows(events) {
 }
 
 export class LocalUsageAnalytics {
-  constructor({ store }) {
+  constructor({ store, eventResolver = null, transcriptScanner = null }) {
     this.store = store;
+    this.eventResolver = eventResolver;
+    this.transcriptScanner = transcriptScanner;
+  }
+
+  async listBaseEvents() {
+    return await this.store.readAllEvents();
+  }
+
+  async listTranscriptEvents() {
+    if (!this.transcriptScanner) {
+      return [];
+    }
+    return await this.transcriptScanner.scanSkillReadEvents();
   }
 
   async listEventsForPeriod(periodKey) {
-    const events = await this.store.readAllEvents();
+    const baseEvents = await this.listBaseEvents();
+    const transcriptEvents = await this.listTranscriptEvents();
+    const events = await enrichEventsWithResolver(dedupeEvents([...baseEvents, ...transcriptEvents]), this.eventResolver);
     const threshold = periodToThreshold(periodKey);
 
     return events.filter((event) => {
@@ -294,7 +325,7 @@ export class LocalUsageAnalytics {
     degradedReason = null,
     cloudState = "local-only",
   } = {}) {
-    const events = await this.store.readAllEvents();
+    const events = await enrichEventsWithResolver(await this.store.readAllEvents(), this.eventResolver);
 
     return {
       source: "local",

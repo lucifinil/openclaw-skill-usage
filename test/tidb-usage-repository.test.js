@@ -188,3 +188,28 @@ test("repository reconnects and retries writes after a closed connection", async
   assert.equal(secondConnection.state.beginTransactionCalls, 1);
   assert.equal(secondConnection.state.commitCalls, 1);
 });
+
+test("repository converts undefined SQL bind values to null", async () => {
+  const connection = createMockConnection();
+  const { repository } = createRepositoryWithConnections([connection]);
+
+  await repository.ensureUsageSpace({
+    usageSpaceId: "space-1",
+    installationId: "install-1",
+    zeroConfig: {
+      instanceId: "instance-1",
+      claimUrl: undefined,
+      expiresAt: undefined,
+    },
+    source: "cloud",
+  });
+
+  const usageSpaceInsert = connection.state.executeCalls.find(({ sql }) =>
+    sql.includes("INSERT INTO usage_spaces"),
+  );
+
+  assert.ok(usageSpaceInsert);
+  assert.equal(usageSpaceInsert.params[3], null);
+  assert.equal(usageSpaceInsert.params[4], null);
+  assert.ok(!usageSpaceInsert.params.includes(undefined));
+});

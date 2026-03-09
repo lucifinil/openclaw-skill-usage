@@ -1,5 +1,5 @@
 {
-  "name": "openclaw-skill-usage",
+  "name": "skill-usage",
   "version": "0.1.0",
   "description": "Zero-config OpenClaw skill usage analytics with OpenClaw hooks and TiDB Cloud Zero sync.",
   "type": "module",

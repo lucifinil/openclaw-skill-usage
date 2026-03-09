@@ -16,6 +16,7 @@ async function readJson(filePath, fallback) {
 }
 
 async function writeJsonAtomic(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp`;
   const body = `${JSON.stringify(value, null, 2)}\n`;
   await writeFile(tempPath, body, "utf8");
@@ -42,9 +43,14 @@ export class JsonlSkillUsageStore {
     this.ready = true;
   }
 
+  async ensureWritablePaths() {
+    await mkdir(this.rootDir, { recursive: true });
+  }
+
   async record(event) {
     this.queue = this.queue.then(async () => {
       await this.initialize();
+      await this.ensureWritablePaths();
 
       const current = this.index[event.eventKey] ?? {
         attempts: 0,

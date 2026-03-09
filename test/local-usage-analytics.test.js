@@ -10,6 +10,14 @@ function createStore(events) {
   };
 }
 
+function createTranscriptScanner(events) {
+  return {
+    async scanSkillReadEvents() {
+      return events;
+    },
+  };
+}
+
 test("local analytics ranks skills across all time", async () => {
   const analytics = new LocalUsageAnalytics({
     store: createStore([
@@ -187,6 +195,108 @@ test("local analytics status summarizes the installation scope", async () => {
   assert.equal(status.summary.agentCount, 2);
   assert.equal(status.summary.accountCount, 0);
   assert.equal(status.summary.subagentRunCount, 1);
+});
+
+test("local analytics enriches missing identity at query time via resolver", async () => {
+  const analytics = new LocalUsageAnalytics({
+    store: createStore([
+      {
+        observedAt: "2026-03-07T10:00:00.000Z",
+        firstTrigger: true,
+        installationId: "install-1",
+        installationLabel: "Mac-mini",
+        agentId: null,
+        botKey: null,
+        botLabel: null,
+        botPlatform: null,
+        channelId: null,
+        sessionKey: null,
+        sessionScope: "main",
+        runId: "run-backfill-query-1",
+        skillId: "git-pr",
+        skillName: "git-pr",
+      },
+    ]),
+    eventResolver: {
+      async resolve(runId) {
+        assert.equal(runId, "run-backfill-query-1");
+        return {
+          runId,
+          sessionKey: "agent:main:discord:channel:1480303286182608897",
+          agentId: "odin",
+          channelId: "1480303286182608897",
+          accountId: "elon",
+          accountName: "team-bot",
+          botPlatform: "discord",
+        };
+      },
+    },
+  });
+
+  const result = await analytics.queryTopSkills({
+    periodKey: "all",
+    usageSpaceId: "install-1",
+    usageSpaceSource: "local",
+  });
+
+  assert.equal(result.rows[0].agentCount, 1);
+  assert.equal(result.rows[0].accountCount, 1);
+  assert.equal(result.rows[0].installations[0].agents[0].agentId, "odin");
+  assert.equal(result.rows[0].installations[0].accounts[0].accountKey, "discord:elon");
+  assert.equal(result.rows[0].installations[0].accounts[0].accountLabel, "Discord / team-bot");
+});
+
+test("local analytics merges transcript-derived events without replacing base totals", async () => {
+  const analytics = new LocalUsageAnalytics({
+    store: createStore([
+      {
+        eventKey: "base-1",
+        observedAt: "2026-03-07T10:00:00.000Z",
+        firstTrigger: true,
+        installationId: "install-1",
+        installationLabel: "Mac-mini",
+        agentId: null,
+        botKey: null,
+        botLabel: null,
+        botPlatform: null,
+        sessionScope: "main",
+        runId: "run-1",
+        skillId: "weather",
+        skillName: "weather",
+      },
+    ]),
+    transcriptScanner: createTranscriptScanner([
+      {
+        eventKey: "tx-1",
+        observedAt: "2026-03-07T10:05:00.000Z",
+        firstTrigger: true,
+        installationId: "install-1",
+        installationLabel: "Mac-mini",
+        agentId: "main",
+        botId: "elon",
+        botKey: "discord:elon",
+        botLabel: "Discord / team-bot",
+        botPlatform: "discord",
+        channelId: "1480303286182608897",
+        sessionKey: "agent:main:discord:channel:1480303286182608897",
+        sessionScope: "main",
+        runId: "run-2",
+        skillId: "weather",
+        skillName: "weather",
+      },
+    ]),
+  });
+
+  const result = await analytics.queryTopSkills({
+    periodKey: "all",
+    usageSpaceId: "install-1",
+    usageSpaceSource: "local",
+  });
+
+  assert.equal(result.rows[0].triggerCount, 2);
+  assert.equal(result.rows[0].attemptCount, 2);
+  assert.equal(result.rows[0].agentCount, 1);
+  assert.equal(result.rows[0].accountCount, 1);
 });
 
 test("local analytics keeps one channel account across multiple routed agents", async () => {
