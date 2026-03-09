@@ -15,7 +15,7 @@ function hashRecordKey(eventKey, attempts) {
 
 function defaultCloudState({ installationId, databaseName }) {
   return {
-    version: 1,
+    version: 2,
     databaseName,
     usageSpace: {
       id: installationId,
@@ -23,6 +23,20 @@ function defaultCloudState({ installationId, databaseName }) {
     },
     zero: null,
     provisioning: null,
+    sync: defaultSyncState({
+      usageSpaceId: installationId,
+    }),
+  };
+}
+
+function defaultSyncState({ usageSpaceId }) {
+  return {
+    usageSpaceId,
+    checkpointOffset: 0,
+    lastSuccessfulSyncAt: null,
+    lastUploadedCount: 0,
+    lastError: null,
+    lastErrorAt: null,
   };
 }
 
@@ -103,6 +117,18 @@ export class SkillUsageCloud {
       };
     }
 
+    if (!existing.sync || typeof existing.sync !== "object") {
+      existing.sync = defaultSyncState({
+        usageSpaceId: existing.usageSpace.id,
+      });
+    }
+
+    if (existing.sync.usageSpaceId !== existing.usageSpace.id) {
+      existing.sync = defaultSyncState({
+        usageSpaceId: existing.usageSpace.id,
+      });
+    }
+
     this.cloudState = existing;
     await this.persist();
   }
@@ -175,44 +201,115 @@ export class SkillUsageCloud {
     return this.repository;
   }
 
-  async buildCloudEvents() {
-    const events = await this.store.readAllEvents();
-    return events.map((event) => ({
+  resetSyncState({ usageSpaceId = this.cloudState?.usageSpace?.id ?? this.installationIdentity.installationId } = {}) {
+    this.cloudState.sync = defaultSyncState({
+      usageSpaceId,
+    });
+  }
+
+  getSyncCheckpointOffset() {
+    if (this.cloudState.sync?.usageSpaceId !== this.cloudState.usageSpace.id) {
+      return 0;
+    }
+
+    return Math.max(0, Number(this.cloudState.sync?.checkpointOffset ?? 0));
+  }
+
+  async buildCloudEvents({ forceFull = false } = {}) {
+    const checkpointOffset = forceFull ? 0 : this.getSyncCheckpointOffset();
+    const { events, nextOffset } = await this.store.readEventsFromOffset(checkpointOffset);
+
+    return {
+      checkpointOffset,
+      nextOffset,
+      events: events.map((event) => ({
       ...event,
       usageSpaceId: this.cloudState.usageSpace.id,
       recordKey: hashRecordKey(event.eventKey, event.attempts),
       installationLabel: event.installationLabel ?? this.installationIdentity.installationLabel,
-    }));
+      })),
+    };
   }
 
-  async syncAll() {
+  async getPendingLocalRecordCount() {
+    await this.initialize();
+    const checkpointOffset = this.getSyncCheckpointOffset();
+    const { count } = await this.store.countEventsFromOffset(checkpointOffset);
+    return count;
+  }
+
+  async markSyncSuccess({ nextOffset, uploaded }) {
+    this.cloudState.sync = {
+      usageSpaceId: this.cloudState.usageSpace.id,
+      checkpointOffset: nextOffset,
+      lastSuccessfulSyncAt: new Date().toISOString(),
+      lastUploadedCount: uploaded,
+      lastError: null,
+      lastErrorAt: null,
+    };
+    await this.persist();
+  }
+
+  async markSyncError(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    this.cloudState.sync = {
+      ...(this.cloudState.sync ?? defaultSyncState({ usageSpaceId: this.cloudState.usageSpace.id })),
+      usageSpaceId: this.cloudState.usageSpace.id,
+      lastError: message,
+      lastErrorAt: new Date().toISOString(),
+    };
+    await this.persist();
+  }
+
+  async getSyncStatus() {
+    await this.initialize();
+    return {
+      lastSuccessfulSyncAt: this.cloudState.sync?.lastSuccessfulSyncAt ?? null,
+      lastUploadedCount: Number(this.cloudState.sync?.lastUploadedCount ?? 0),
+      lastError: this.cloudState.sync?.lastError ?? null,
+      lastErrorAt: this.cloudState.sync?.lastErrorAt ?? null,
+      pendingLocalRecordCount: await this.getPendingLocalRecordCount(),
+    };
+  }
+
+  async syncAll({ forceFull = false } = {}) {
     await this.initialize();
     const repository = await this.getRepository();
-    const events = await this.buildCloudEvents();
+    const batch = await this.buildCloudEvents({ forceFull });
 
-    await repository.ensureUsageSpace({
-      usageSpaceId: this.cloudState.usageSpace.id,
-      installationId: this.installationIdentity.installationId,
-      zeroConfig: this.cloudState.zero,
-      source: this.cloudState.usageSpace.source,
-    });
-    await repository.ensureInstallationMember({
-      usageSpaceId: this.cloudState.usageSpace.id,
-      installationId: this.installationIdentity.installationId,
-      installationLabel: this.installationIdentity.installationLabel,
-    });
+    try {
+      await repository.ensureUsageSpace({
+        usageSpaceId: this.cloudState.usageSpace.id,
+        installationId: this.installationIdentity.installationId,
+        zeroConfig: this.cloudState.zero,
+        source: this.cloudState.usageSpace.source,
+      });
+      await repository.ensureInstallationMember({
+        usageSpaceId: this.cloudState.usageSpace.id,
+        installationId: this.installationIdentity.installationId,
+        installationLabel: this.installationIdentity.installationLabel,
+      });
 
-    const syncResult = await repository.upsertEvents(events);
-    const summary = await repository.queryUsageSpaceSummary({
-      usageSpaceId: this.cloudState.usageSpace.id,
-    });
+      const syncResult = await repository.upsertEvents(batch.events);
+      const summary = await repository.queryUsageSpaceSummary({
+        usageSpaceId: this.cloudState.usageSpace.id,
+      });
+      await this.markSyncSuccess({
+        nextOffset: batch.nextOffset,
+        uploaded: syncResult.uploaded,
+      });
 
-    return {
-      ...syncResult,
-      summary,
-      usageSpaceId: this.cloudState.usageSpace.id,
-      zero: this.cloudState.zero,
-    };
+      return {
+        ...syncResult,
+        summary,
+        usageSpaceId: this.cloudState.usageSpace.id,
+        zero: this.cloudState.zero,
+        sync: await this.getSyncStatus(),
+      };
+    } catch (error) {
+      await this.markSyncError(error);
+      throw error;
+    }
   }
 
   async queryTopSkillsWithFallback({ periodKey = "all", limit = 10 } = {}) {
@@ -280,6 +377,7 @@ export class SkillUsageCloud {
       databaseName: this.cloudState.databaseName,
       zero: this.cloudState.zero,
       summary: sync.summary,
+      sync: sync.sync,
     };
   }
 
@@ -296,8 +394,9 @@ export class SkillUsageCloud {
       };
     } catch (error) {
       await this.initialize();
+      await this.markSyncError(error);
 
-      return this.localAnalytics.querySummary({
+      const localStatus = await this.localAnalytics.querySummary({
         usageSpaceId: this.cloudState.usageSpace.id,
         usageSpaceSource: this.cloudState.usageSpace.source,
         installationLabel: this.installationIdentity.installationLabel,
@@ -306,6 +405,11 @@ export class SkillUsageCloud {
         degradedReason: error.message,
         cloudState: this.cloudState.zero ? "degraded" : "local-only",
       });
+
+      return {
+        ...localStatus,
+        sync: await this.getSyncStatus(),
+      };
     }
   }
 
@@ -338,12 +442,18 @@ export class SkillUsageCloud {
       source: "joined",
     };
     this.cloudState.provisioning = null;
+    this.resetSyncState({
+      usageSpaceId: parsed.usageSpaceId,
+    });
     await this.persist();
-    await this.syncAll();
+    const sync = await this.syncAll({
+      forceFull: true,
+    });
 
     return {
       usageSpaceId: this.cloudState.usageSpace.id,
       zero: this.cloudState.zero,
+      sync: sync.sync,
     };
   }
 
@@ -355,8 +465,13 @@ export class SkillUsageCloud {
     };
     this.cloudState.zero = null;
     this.cloudState.provisioning = null;
+    this.resetSyncState({
+      usageSpaceId: this.installationIdentity.installationId,
+    });
     await this.persist();
-    return this.syncAll();
+    return this.syncAll({
+      forceFull: true,
+    });
   }
 
   async deleteInstallationData() {
@@ -367,6 +482,8 @@ export class SkillUsageCloud {
       installationId: this.installationIdentity.installationId,
     });
     await this.store.clear();
+    this.resetSyncState();
+    await this.persist();
     return this.getStatus();
   }
 
@@ -387,6 +504,7 @@ export class SkillUsageCloud {
       this.cloudState.zero = null;
     }
 
+    this.resetSyncState();
     await this.persist();
 
     return {

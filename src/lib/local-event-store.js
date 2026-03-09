@@ -1,4 +1,5 @@
-import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 async function readJson(filePath, fallback) {
@@ -95,6 +96,59 @@ export class JsonlSkillUsageStore {
 
       throw error;
     }
+  }
+
+  async readEventsFromOffset(offset = 0) {
+    await this.initialize();
+    const safeOffset = Number.isFinite(offset) && offset > 0 ? Math.floor(offset) : 0;
+
+    try {
+      const fileStat = await stat(this.eventsPath);
+
+      if (safeOffset >= fileStat.size) {
+        return {
+          events: [],
+          nextOffset: fileStat.size,
+        };
+      }
+
+      let text = "";
+      const stream = createReadStream(this.eventsPath, {
+        encoding: "utf8",
+        start: safeOffset,
+      });
+
+      for await (const chunk of stream) {
+        text += chunk;
+      }
+
+      return {
+        events: text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => JSON.parse(line)),
+        nextOffset: fileStat.size,
+      };
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return {
+          events: [],
+          nextOffset: 0,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  async countEventsFromOffset(offset = 0) {
+    const { events, nextOffset } = await this.readEventsFromOffset(offset);
+
+    return {
+      count: events.length,
+      nextOffset,
+    };
   }
 
   async flush() {

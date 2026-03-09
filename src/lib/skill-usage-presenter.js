@@ -6,6 +6,14 @@ export function formatExpiry(expiresAt) {
   return new Date(expiresAt).toISOString();
 }
 
+function formatTimestamp(value) {
+  if (!value) {
+    return "none yet";
+  }
+
+  return new Date(value).toISOString();
+}
+
 function formatAccountBreakdownLines(accounts) {
   if (!Array.isArray(accounts) || accounts.length === 0) {
     return [];
@@ -95,6 +103,7 @@ export function formatTopResult(result) {
 
 export function formatStatus(status) {
   const totalsLabel = status.source === "cloud" ? "synced totals" : "local totals";
+  const sync = status.sync ?? {};
 
   return [
     "Skill usage status:",
@@ -109,6 +118,9 @@ export function formatStatus(status) {
     `${totalsLabel}: ${status.summary.totalTriggers} triggers, ${status.summary.totalAttempts} attempts`,
     `members: ${status.summary.installationCount} installations, ${status.summary.agentCount} agents, ${status.summary.accountCount ?? 0} channel accounts`,
     `last observed at: ${status.summary.lastObservedAt ?? "none yet"}`,
+    `last cloud sync: ${formatTimestamp(sync.lastSuccessfulSyncAt)}`,
+    `pending local records: ${sync.pendingLocalRecordCount ?? 0}`,
+    `last sync error: ${sync.lastError ?? "none"}`,
     ...(status.degradedReason ? [`cloud status: ${status.degradedReason}`] : []),
     "metadata sent: skill id/name, installation id/label, channel account key/label/platform, agent id, routing/session identifiers, timestamps, status, latency",
   ].join("\n");
@@ -120,7 +132,7 @@ export function formatHelp() {
     "/skillusage status",
     "/skillusage doctor",
     "/skillusage top [1d|7d|30d|all]",
-    "/skillusage sync",
+    "/skillusage sync [full]",
     "/skillusage join-token",
     "/skillusage join <token>",
     "/skillusage leave",

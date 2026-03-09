@@ -107,17 +107,22 @@ test("skill usage tool renders status output", async () => {
             expiresAt: "2026-04-06T10:00:00.000Z",
             claimUrl: "https://tidbcloud.com/claim/demo",
           },
-          summary: {
-            totalTriggers: 8,
-            totalAttempts: 9,
-            installationCount: 2,
-            agentCount: 3,
-            accountCount: 2,
-            subagentRunCount: 4,
-          },
-        };
-      },
+        summary: {
+          totalTriggers: 8,
+          totalAttempts: 9,
+          installationCount: 2,
+          agentCount: 3,
+          accountCount: 2,
+          subagentRunCount: 4,
+        },
+        sync: {
+          lastSuccessfulSyncAt: "2026-03-07T10:10:00.000Z",
+          pendingLocalRecordCount: 0,
+          lastError: null,
+        },
+      };
     },
+  },
     params: {
       action: "status",
     },
@@ -126,4 +131,7 @@ test("skill usage tool renders status output", async () => {
   assert.match(result.content[0].text, /space-1/);
   assert.match(result.content[0].text, /joined/);
   assert.match(result.content[0].text, /this installation: Mac-mini/);
+  assert.match(result.content[0].text, /last cloud sync:/);
+  assert.match(result.content[0].text, /pending local records: 0/);
+  assert.match(result.content[0].text, /last sync error: none/);
 });
