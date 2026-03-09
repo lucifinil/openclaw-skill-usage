@@ -239,9 +239,11 @@ export function normalizeRunContext(payload) {
     getNestedValue(payload, ["context", "isSubagent"]) === true ||
     getNestedValue(payload, ["session", "isSubagent"]) === true;
   const botPlatform = firstString(
+    payload?.botPlatform,
     payload?.platform,
     payload?.provider,
     payload?.service,
+    getNestedString(payload, ["context", "botPlatform"]),
     getNestedString(payload, ["context", "platform"]),
     getNestedString(payload, ["context", "provider"]),
     getNestedString(payload, ["context", "service"]),
