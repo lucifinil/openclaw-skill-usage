@@ -36,7 +36,10 @@ export function resolvePluginOptions(api) {
       typeof entryConfig.installationLabel === "string" && entryConfig.installationLabel.trim().length > 0
         ? normalizeInstallationLabel(entryConfig.installationLabel)
         : null,
-    botAliases: normalizeBotAliases(entryConfig.botAliases),
+    accountAliases: normalizeAccountAliases({
+      accountAliases: entryConfig.accountAliases,
+      botAliases: entryConfig.botAliases,
+    }),
   };
 }
 
@@ -94,7 +97,7 @@ function normalizeDisplayLabel(value, maxLength) {
   return normalized.length > 0 ? normalized.slice(0, maxLength) : null;
 }
 
-function normalizeBotAliases(value) {
+function normalizeAliasEntries(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
@@ -104,6 +107,13 @@ function normalizeBotAliases(value) {
       .map(([key, label]) => [typeof key === "string" ? key.trim() : "", normalizeBotLabel(label)])
       .filter(([key, label]) => key.length > 0 && label),
   );
+}
+
+function normalizeAccountAliases({ accountAliases, botAliases }) {
+  return {
+    ...normalizeAliasEntries(botAliases),
+    ...normalizeAliasEntries(accountAliases),
+  };
 }
 
 function defaultInstallationLabel(installationId) {

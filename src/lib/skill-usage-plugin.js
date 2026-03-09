@@ -45,12 +45,11 @@ function normalizeBotPlatform(value) {
   return value.trim().toLowerCase();
 }
 
-function resolveBotIdentity({ event, botAliases }) {
+function resolveAccountIdentity({ event, accountAliases }) {
   const botPlatform = normalizeBotPlatform(event.botPlatform);
   const botId = normalizeBotLabel(event.botId);
   const botName = normalizeBotLabel(event.botName);
   const channelId = normalizeBotLabel(event.channelId);
-  const agentId = normalizeBotLabel(event.agentId);
   let botKey = null;
   let defaultLabel = null;
 
@@ -63,9 +62,6 @@ function resolveBotIdentity({ event, botAliases }) {
   } else if (channelId) {
     botKey = [botPlatform, `channel:${channelId}`].filter(Boolean).join(":");
     defaultLabel = `channel:${channelId}`;
-  } else if (agentId && !agentId.toLowerCase().includes("subagent")) {
-    botKey = `agent:${agentId}`;
-    defaultLabel = agentId;
   }
 
   if (!botKey) {
@@ -76,7 +72,7 @@ function resolveBotIdentity({ event, botAliases }) {
     };
   }
 
-  const aliasedLabel = botAliases?.[botKey] ?? null;
+  const aliasedLabel = accountAliases?.[botKey] ?? null;
   const label = aliasedLabel ?? defaultLabel ?? botKey;
   const platformLabel = formatPlatformLabel(botPlatform);
 
@@ -247,9 +243,9 @@ export class SkillUsagePlugin {
     ) {
       event.sessionScope = "subagent";
     }
-    const botIdentity = resolveBotIdentity({
+    const botIdentity = resolveAccountIdentity({
       event,
-      botAliases: this.options.botAliases,
+      accountAliases: this.options.accountAliases,
     });
 
     const record = await this.store.record({

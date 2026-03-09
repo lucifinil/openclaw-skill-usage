@@ -32,7 +32,7 @@ function normalizeLimit(limit) {
 export const skillUsageToolDefinition = {
   name: "skill_usage_stats",
   description:
-    "Read OpenClaw skill usage analytics. Use this to answer which skills are used most, compare 1d/7d/30d/all-time rankings, or explain the current shared usage-space status.",
+    "Read OpenClaw skill usage analytics. Use this to answer which skills are used most, compare 1d/7d/30d/all-time rankings, or explain usage by installation, routed agent, and channel account.",
   parameters: {
     type: "object",
     additionalProperties: false,

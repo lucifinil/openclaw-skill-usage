@@ -1,6 +1,6 @@
 ---
 name: skill-usage-insights
-description: Use when the user wants to know which OpenClaw skills are used most, compare usage across periods, or understand how counts are shared across installations, agents, and subagent runs.
+description: Use when the user wants to know which OpenClaw skills are used most, compare usage across periods, or understand how counts are shared across installations, agents, and channel accounts.
 ---
 
 # Skill Usage Insights
@@ -9,9 +9,9 @@ Use the `skill_usage_stats` tool when the user asks about:
 
 - most-used or least-used skills
 - rankings for `1d`, `7d`, `30d`, or `all`
-- how usage is shared across installations, agents, or subagent runs
+- how usage is shared across installations, agents, or channel accounts
 - which installations contributed to a skill's total and by how much
-- which bot accounts inside an installation contributed to a skill's total
+- which Discord or Telegram accounts inside an installation contributed to a skill's total
 - whether counts are local-only or joined into a shared usage space
 
 Defaults:
@@ -30,6 +30,6 @@ Response expectations:
 
 - Name the period explicitly.
 - Surface the top skills first.
-- When the result is shared, include the installation breakdown if it helps answer the question.
+- When the result is shared, include the installation, agent, and channel-account breakdowns if they help answer the question.
 - Mention the usage-space scope if it matters to the answer.
-- If the user asks about privacy, state that only non-sensitive metadata is synced: skill ids/names, installation/agent identifiers, session scope, timestamps, status, and latency.
+- If the user asks about privacy, state that only non-sensitive metadata is synced: skill ids/names, installation/agent/account identifiers, routing/session metadata, timestamps, status, and latency.
