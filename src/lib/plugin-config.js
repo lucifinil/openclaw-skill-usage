@@ -24,6 +24,7 @@ export function resolvePluginOptions(api) {
   return {
     stateDir: resolveStateDir(api),
     autoSync: entryConfig.autoSync !== false,
+    captureRoutingSamples: entryConfig.captureRoutingSamples === true,
     provisionTag:
       typeof entryConfig.provisionTag === "string" && entryConfig.provisionTag.trim().length > 0
         ? entryConfig.provisionTag.trim()
