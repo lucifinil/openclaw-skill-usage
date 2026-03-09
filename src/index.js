@@ -36,14 +36,6 @@ export default function register(api) {
     name: "skill-usage.after-tool-call",
     description: "Finalizes and records skill usage observations after the tool executes.",
   });
-  api.registerHook?.("beforeToolCall", beforeHandler, {
-    name: "skill-usage.beforeToolCall",
-    description: "Compatibility hook for beforeToolCall.",
-  });
-  api.registerHook?.("afterToolCall", afterHandler, {
-    name: "skill-usage.afterToolCall",
-    description: "Compatibility hook for afterToolCall.",
-  });
 
   api.registerCommand?.({
     name: "skillusage",
