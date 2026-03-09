@@ -9,6 +9,44 @@ import { LocalUsageAnalytics } from "./local-usage-analytics.js";
 
 function noop() {}
 
+function mergeInstallationsForDisplay(baseInstallations = [], localInstallations = []) {
+  const localById = new Map(localInstallations.map((item) => [item.installationId, item]));
+  return baseInstallations.map((installation) => {
+    const local = localById.get(installation.installationId);
+    if (!local) {
+      return installation;
+    }
+    const needsAgents = !Array.isArray(installation.agents) || installation.agents.length === 0;
+    const needsAccounts = !Array.isArray(installation.accounts) || installation.accounts.length === 0;
+    return {
+      ...installation,
+      agents: needsAgents ? (local.agents ?? installation.agents ?? []) : installation.agents,
+      accounts: needsAccounts ? (local.accounts ?? installation.accounts ?? []) : installation.accounts,
+    };
+  });
+}
+
+function mergeTopResultForDisplay(baseResult, localResult) {
+  const localBySkillId = new Map((localResult?.rows ?? []).map((row) => [row.skillId, row]));
+  return {
+    ...baseResult,
+    rows: (baseResult.rows ?? []).map((row) => {
+      const local = localBySkillId.get(row.skillId);
+      if (!local) {
+        return row;
+      }
+      const needsAgents = !row.agentCount || !(row.installations ?? []).some((item) => (item.agents ?? []).length > 0);
+      const needsAccounts = !row.accountCount || !(row.installations ?? []).some((item) => (item.accounts ?? []).length > 0);
+      return {
+        ...row,
+        agentCount: needsAgents ? local.agentCount : row.agentCount,
+        accountCount: needsAccounts ? local.accountCount : row.accountCount,
+        installations: mergeInstallationsForDisplay(row.installations ?? [], local.installations ?? []),
+      };
+    }),
+  };
+}
+
 function hashRecordKey(eventKey, attempts) {
   return createHash("sha256").update(`${eventKey}:${attempts}`).digest("hex");
 }
@@ -63,6 +101,8 @@ export class SkillUsageCloud {
     logger,
     fetchImpl = globalThis.fetch,
     repositoryFactory,
+    eventResolver = null,
+    transcriptScanner = null,
   }) {
     this.stateDir = stateDir;
     this.installationIdentity = installationIdentity;
@@ -89,6 +129,8 @@ export class SkillUsageCloud {
     this.syncQueue = Promise.resolve();
     this.localAnalytics = new LocalUsageAnalytics({
       store: this.store,
+      eventResolver,
+      transcriptScanner,
     });
   }
 
@@ -318,9 +360,17 @@ export class SkillUsageCloud {
         periodKey,
         limit,
       });
+      const localResult = await this.localAnalytics.queryTopSkills({
+        periodKey,
+        limit,
+        usageSpaceId: this.cloudState.usageSpace.id,
+        usageSpaceSource: this.cloudState.usageSpace.source,
+        cloudState: "healthy",
+      });
+      const merged = mergeTopResultForDisplay(result, localResult);
 
       return {
-        ...result,
+        ...merged,
         source: "cloud",
         cloudState: "healthy",
         aggregationScope: "usage-space",

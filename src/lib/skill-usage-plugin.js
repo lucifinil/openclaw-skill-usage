@@ -17,6 +17,8 @@ import { runSkillUsageCommand } from "./skill-usage-command.js";
 import { executeSkillUsageTool } from "./skill-usage-tool.js";
 import { SubagentRunIndex } from "./subagent-run-index.js";
 import { RoutingSampleRecorder } from "./routing-sample-recorder.js";
+import { SessionAttributionResolver } from "./session-attribution-resolver.js";
+import { TranscriptSkillScanner } from "./transcript-skill-scanner.js";
 import { normalizeRunContext } from "./hook-context.js";
 
 function noop() {}
@@ -123,6 +125,22 @@ function resolvePseudoSkillDescriptor(payload, pluginSlots) {
   return null;
 }
 
+function mergeResolvedIdentity(event, resolved) {
+  if (!resolved) {
+    return event;
+  }
+
+  return {
+    ...event,
+    agentId: event.agentId ?? resolved.agentId ?? null,
+    sessionKey: event.sessionKey ?? resolved.sessionKey ?? null,
+    channelId: event.channelId ?? resolved.channelId ?? null,
+    botId: event.botId ?? resolved.accountId ?? null,
+    botName: event.botName ?? resolved.accountName ?? null,
+    botPlatform: event.botPlatform ?? resolved.botPlatform ?? null,
+  };
+}
+
 export class SkillUsagePlugin {
   constructor({ api, cloudFactory }) {
     this.api = api;
@@ -136,6 +154,8 @@ export class SkillUsagePlugin {
     this.subagentRunIds = new Set();
     this.subagentRunIndex = null;
     this.routingSampleRecorder = null;
+    this.sessionAttributionResolver = null;
+    this.transcriptSkillScanner = null;
     this.initialized = false;
     this.initializing = null;
     this.installationIdentity = null;
@@ -178,11 +198,21 @@ export class SkillUsagePlugin {
           });
           await this.routingSampleRecorder.initialize();
         }
+        const openclawRoot = path.resolve(stateDir, "../../..");
+        this.sessionAttributionResolver = new SessionAttributionResolver({
+          openclawRoot,
+        });
+        this.transcriptSkillScanner = new TranscriptSkillScanner({
+          openclawRoot,
+          installationIdentity: this.installationIdentity,
+        });
         this.cloud = this.cloudFactory({
           stateDir,
           installationIdentity: this.installationIdentity,
           store: this.store,
           logger: this.logger,
+          eventResolver: this.sessionAttributionResolver,
+          transcriptScanner: this.transcriptSkillScanner,
         });
         await this.cloud.initialize();
         this.initialized = true;
@@ -287,6 +317,12 @@ export class SkillUsagePlugin {
     ) {
       event.sessionScope = "subagent";
     }
+
+    if (event.runId) {
+      const resolvedIdentity = await this.sessionAttributionResolver?.resolve(event.runId);
+      event = mergeResolvedIdentity(event, resolvedIdentity);
+    }
+
     const botIdentity = resolveAccountIdentity({
       event,
       accountAliases: this.options.accountAliases,

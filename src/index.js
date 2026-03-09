@@ -14,20 +14,30 @@ export default function register(api) {
     },
   });
 
-  const beforeHandler = async (payload) => {
-    await plugin.onBeforeToolCall(payload);
+  const mergeToolHookPayload = (event, ctx) => ({
+    ...(event ?? {}),
+    ...(ctx ?? {}),
+    context: {
+      ...(event?.context ?? {}),
+      ...(ctx ?? {}),
+    },
+  });
+
+  const beforeHandler = async (event, ctx) => {
+    api.logger?.info?.(
+      `[skill-usage-debug] before_tool_call tool=${event?.toolName ?? "unknown"} runId=${event?.runId ?? ctx?.runId ?? ""}`,
+    );
+    await plugin.onBeforeToolCall(mergeToolHookPayload(event, ctx));
   };
-  const afterHandler = async (payload) => {
-    await plugin.onAfterToolCall(payload);
+  const afterHandler = async (event, ctx) => {
+    api.logger?.info?.(
+      `[skill-usage-debug] after_tool_call tool=${event?.toolName ?? "unknown"} runId=${event?.runId ?? ctx?.runId ?? ""}`,
+    );
+    await plugin.onAfterToolCall(mergeToolHookPayload(event, ctx));
   };
 
-  // Runtime compatibility: support both event emitter hooks and registerHook API,
-  // plus snake_case/camelCase names observed across versions.
-  api.on?.("before_tool_call", beforeHandler);
-  api.on?.("after_tool_call", afterHandler);
-  api.on?.("beforeToolCall", beforeHandler);
-  api.on?.("afterToolCall", afterHandler);
-
+  // Prefer typed registerHook API here so tool hook context (agentId/sessionKey/sessionId)
+  // is delivered reliably via the second ctx parameter.
   api.registerHook?.("before_tool_call", beforeHandler, {
     name: "skill-usage.before-tool-call",
     description: "Observes skill file reads before the tool executes.",
