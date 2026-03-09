@@ -16,6 +16,8 @@ import { SkillUsageCloud } from "./skill-usage-cloud.js";
 import { runSkillUsageCommand } from "./skill-usage-command.js";
 import { executeSkillUsageTool } from "./skill-usage-tool.js";
 import { SubagentRunIndex } from "./subagent-run-index.js";
+import { RoutingSampleRecorder } from "./routing-sample-recorder.js";
+import { normalizeRunContext } from "./hook-context.js";
 
 function noop() {}
 
@@ -133,6 +135,7 @@ export class SkillUsagePlugin {
     this.pendingReads = new Map();
     this.subagentRunIds = new Set();
     this.subagentRunIndex = null;
+    this.routingSampleRecorder = null;
     this.initialized = false;
     this.initializing = null;
     this.installationIdentity = null;
@@ -169,6 +172,12 @@ export class SkillUsagePlugin {
           logger: this.logger,
         });
         await this.subagentRunIndex.initialize();
+        if (this.options.captureRoutingSamples) {
+          this.routingSampleRecorder = new RoutingSampleRecorder({
+            stateDir,
+          });
+          await this.routingSampleRecorder.initialize();
+        }
         this.cloud = this.cloudFactory({
           stateDir,
           installationIdentity: this.installationIdentity,
@@ -183,14 +192,40 @@ export class SkillUsagePlugin {
     await this.initializing;
   }
 
+  async captureRoutingSample({ phase, payload, resolvedContext = null }) {
+    if (!this.routingSampleRecorder) {
+      return;
+    }
+
+    try {
+      await this.routingSampleRecorder.record({
+        phase,
+        payload,
+        normalizedContext: normalizeRunContext(payload),
+        resolvedContext,
+        installationId: this.installationIdentity?.installationId ?? null,
+      });
+    } catch (error) {
+      this.logger.warn?.(`Failed to record routing sample: ${error.message}`);
+    }
+  }
+
   async onBeforeToolCall(payload) {
     const pending = createPendingSkillRead(payload);
 
-    if (!pending) {
+    if (!pending && !this.options.captureRoutingSamples) {
       return null;
     }
 
     await this.initialize();
+    await this.captureRoutingSample({
+      phase: "before_tool_call",
+      payload,
+    });
+
+    if (!pending) {
+      return null;
+    }
     this.pendingReads.set(pending.pendingKey, pending);
     return pending;
   }
@@ -208,10 +243,16 @@ export class SkillUsagePlugin {
     const toolCallId = normalizeToolCallId(payload);
     const pendingKey = fallbackPending?.pendingKey ?? toolCallId;
     const pending = (pendingKey && this.pendingReads.get(pendingKey)) ?? fallbackPending;
+    const pseudoSkill = pending ? null : resolvePseudoSkillDescriptor(payload, this.pluginSlots);
+
+    if (!pending && !pseudoSkill && !maybeSubagentRunId && !this.options.captureRoutingSamples) {
+      return null;
+    }
 
     await this.initialize();
 
     let event = null;
+    let record = null;
 
     if (pending) {
       if (pendingKey) {
@@ -224,8 +265,11 @@ export class SkillUsagePlugin {
         installationId: this.installationIdentity.installationId,
       });
     } else {
-      const pseudoSkill = resolvePseudoSkillDescriptor(payload, this.pluginSlots);
       if (!pseudoSkill) {
+        await this.captureRoutingSample({
+          phase: "after_tool_call",
+          payload,
+        });
         return null;
       }
 
@@ -248,12 +292,25 @@ export class SkillUsagePlugin {
       accountAliases: this.options.accountAliases,
     });
 
-    const record = await this.store.record({
+    record = await this.store.record({
       ...event,
       installationLabel: this.installationIdentity.installationLabel,
       botKey: botIdentity.botKey,
       botLabel: botIdentity.botLabel,
       botPlatform: botIdentity.botPlatform,
+    });
+    await this.captureRoutingSample({
+      phase: "after_tool_call",
+      payload,
+      resolvedContext: {
+        agentId: record.agentId,
+        accountKey: record.botKey,
+        accountLabel: record.botLabel,
+        accountPlatform: record.botPlatform,
+        channelId: record.channelId,
+        sessionScope: record.sessionScope,
+        runId: record.runId,
+      },
     });
 
     this.logger.debug?.("Recorded skill usage event", {
@@ -312,6 +369,10 @@ export class SkillUsagePlugin {
 
     if (this.store) {
       await this.store.flush();
+    }
+
+    if (this.routingSampleRecorder) {
+      await this.routingSampleRecorder.flush();
     }
 
     this.pendingReads.clear();

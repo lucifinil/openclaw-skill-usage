@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { JsonlSkillUsageStore } from "../src/lib/local-event-store.js";
@@ -477,6 +477,75 @@ test("plugin does not synthesize a channel account from agent id alone", async (
     assert.equal(record.agentId, "odin");
     assert.equal(record.botKey, null);
     assert.equal(record.botLabel, null);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("plugin can capture sanitized routing samples for remote fixture collection", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-routing-samples-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({
+      api: createApi(tempDir, {
+        config: {
+          captureRoutingSamples: true,
+        },
+      }),
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-routing-1",
+      params: {
+        path: "/Users/demo/.codex/skills/git-pr/SKILL.md",
+      },
+      context: {
+        agentId: "odin",
+        accountId: "acct-1",
+        accountName: "@team-bot",
+        channelId: "discord-room-1",
+        platform: "discord",
+        runId: "run-routing-1",
+        timestamp: "2026-03-07T10:00:00.000Z",
+      },
+    });
+
+    await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-routing-1",
+      ok: true,
+      result: {
+        content: "---\nname: git-pr\n---\n# Git PR\n",
+      },
+      context: {
+        agentId: "odin",
+        accountId: "acct-1",
+        accountName: "@team-bot",
+        channelId: "discord-room-1",
+        platform: "discord",
+        runId: "run-routing-1",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    });
+    await plugin.stop();
+
+    const filePath = path.join(tempDir, "debug", "routing-samples.jsonl");
+    const lines = (await readFile(filePath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    assert.equal(lines.length, 2);
+    assert.equal(lines[0].payload.toolName, "read");
+    assert.equal(lines[0].payload.context.agentId, "odin");
+    assert.equal(lines[0].payload.context.accountId, "acct-1");
+    assert.equal(lines[0].payload.context.channelId, "discord-room-1");
+    assert.equal(lines[0].payload.context.platform, "discord");
+    assert.equal(lines[0].payload.result, undefined);
+    assert.equal(lines[0].payload.params, undefined);
+    assert.equal(lines[1].resolvedContext.accountPlatform, "discord");
+    assert.equal(lines[1].resolvedContext.accountLabel, "Discord / @team-bot");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

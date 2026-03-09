@@ -112,6 +112,46 @@ Sync behavior:
 - `/skillusage status` shows `last cloud sync`, `pending local records`, and `last sync error`
 - `/skillusage sync full` forces a full resync of the local event history into the current usage space
 
+## Remote routing capture
+
+If you need to validate Discord or Telegram routing fields on a real OpenClaw server, enable sanitized routing capture temporarily:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "skill-usage": {
+        "enabled": true,
+        "config": {
+          "captureRoutingSamples": true
+        }
+      }
+    }
+  }
+}
+```
+
+This writes sanitized routing samples to:
+
+```text
+~/.openclaw/state/plugins/skill-usage/debug/routing-samples.jsonl
+```
+
+What it includes:
+
+- routing-related hook fields such as agent, account, channel, platform, run, and session ids
+- selected nested `context`, `channel`, `account`, `bot`, `connector`, `integration`, `transport`, `session`, and `run` fields
+- normalized and resolved routing context for the observed skill event
+
+What it excludes:
+
+- prompts
+- user message content
+- tool outputs such as `result.content`
+- arbitrary tool params beyond the routing whitelist
+
+Use it only while capturing samples for fixture work, then turn it back off.
+
 ## Sharing model
 
 Professional terms used in this repo:
