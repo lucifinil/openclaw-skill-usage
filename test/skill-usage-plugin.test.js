@@ -442,3 +442,42 @@ test("plugin attributes channel bot usage with friendly aliases", async () => {
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("plugin does not synthesize a channel account from agent id alone", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-account-"));
+
+  try {
+    const plugin = createSkillUsagePlugin({
+      api: createApi(tempDir),
+    });
+
+    await plugin.onBeforeToolCall({
+      toolName: "read",
+      toolCallId: "call-agent-only",
+      params: { path: "/Users/demo/.codex/skills/git-pr/SKILL.md" },
+      context: {
+        agentId: "odin",
+        runId: "run-agent-only",
+        timestamp: "2026-03-07T10:00:00.000Z",
+      },
+    });
+
+    const record = await plugin.onAfterToolCall({
+      toolName: "read",
+      toolCallId: "call-agent-only",
+      ok: true,
+      result: { content: "---\nname: git-pr\n---\n# Git PR\n" },
+      context: {
+        agentId: "odin",
+        runId: "run-agent-only",
+        timestamp: "2026-03-07T10:00:01.000Z",
+      },
+    });
+
+    assert.equal(record.agentId, "odin");
+    assert.equal(record.botKey, null);
+    assert.equal(record.botLabel, null);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

@@ -17,7 +17,7 @@ The product idea is simple:
 - auto-provisions TiDB Cloud Zero on first sync
 - shares counts across multiple OpenClaw installations with a join token
 - shows each skill's total first, then a per-installation breakdown using installation labels
-- for channel-based deployments, can also split each installation by bot account
+- splits each installation by routed agent and channel account when that metadata is available
 - keeps local-first defaults: one installation starts in its own usage space automatically
 - exposes both a slash command and an agent tool
 
@@ -67,7 +67,8 @@ Example user prompts:
 
 - "What are my most used skills?"
 - "Show my top skills in the last 7 days."
-- "Are subagents driving most of the skill traffic?"
+- "Which Discord bot account is using `git-pr` the most?"
+- "Compare skill usage by agent and Telegram account."
 
 Example agent flow:
 
@@ -111,14 +112,14 @@ Professional terms used in this repo:
 
 - `installation`: one OpenClaw Gateway deployment
 - `agent`: one configured OpenClaw agent
-- `subagent run`: one spawned subagent execution
+- `channel account`: the Discord or Telegram account bound to a channel connector
 - `usage space`: the aggregation namespace that multiple installations can share
 
 Default behavior:
 
 - one installation starts in one private usage space
 - each installation gets a zero-config `installation label` from the machine hostname
-- agents and subagent runs inside that installation count together automatically
+- counts roll up under that installation automatically
 
 When you want a shared chart:
 
@@ -136,7 +137,7 @@ If you want a custom installation label instead of the hostname-derived default,
         "enabled": true,
         "config": {
           "installationLabel": "MBP",
-          "botAliases": {
+          "accountAliases": {
             "discord:channel:discord-room-1": "Discord / @sales-bot",
             "telegram:channel:telegram-room-1": "Telegram / @alerts-bot"
           }
@@ -147,11 +148,27 @@ If you want a custom installation label instead of the hostname-derived default,
 }
 ```
 
-Bot attribution rules:
+Channel-account attribution rules:
 
-- if the runtime exposes a bot/account id, that becomes the stable bot key
-- if the runtime only exposes a channel identity, the plugin falls back to a channel-bound bot key
-- `botAliases` lets you turn those stable keys into the bot account names you actually want to see in rankings
+- if the runtime exposes a bot/account id, that becomes the stable channel-account key
+- if the runtime only exposes a channel identity, the plugin falls back to a channel-bound account key
+- `accountAliases` lets you turn those stable keys into the account names you actually want to see in rankings
+- legacy `botAliases` is still accepted for backward compatibility
+
+## Multi-agent routing
+
+This plugin follows the same routing dimensions that OpenClaw documents for multi-agent channels:
+
+- `agentId` tells you which OpenClaw agent handled the work
+- `accountId` tells you which Discord or Telegram account the channel connector used
+
+That means both of these common deployments are handled cleanly:
+
+- Option A: one Discord bot account routing to multiple agents by channel or thread
+- Option B: multiple Discord or Telegram bot accounts, each bound to its own agent
+
+In Option A, you will see one channel-account row with multiple agent rows under the same installation.
+In Option B, you will see separate channel-account rows and separate agent rows under the same installation.
 
 ## Privacy model
 
@@ -159,10 +176,9 @@ Only non-sensitive metadata is synced:
 
 - skill id and skill name
 - installation id and installation label
-- bot id/key, bot label, and platform when available
+- channel account id/key, label, and platform when available
 - agent id
-- session scope (`main` or `subagent`)
-- turn, message, request, and channel ids when available
+- routing/session identifiers when available
 - timestamps, status, latency, trigger counts, and attempt numbers
 
 Not synced:
@@ -193,36 +209,37 @@ scope: current usage space
 1. gh-issue-pr-iterations - total 18 triggers, 22 attempts
    by installation:
    Mac-mini - 10 total triggers, 12 attempts
-      scope split: main 6, subagent 4
-      bot split:
+      by agent:
+      odin - 6 total triggers, 7 attempts
+      loki - 4 total triggers, 5 attempts
+      by channel account:
       Discord / @sales-bot - 7 total triggers, 8 attempts
-         scope split: main 4, subagent 3
       Telegram / @alerts-bot - 3 total triggers, 4 attempts
-         scope split: main 2, subagent 1
    MBP - 8 total triggers, 10 attempts
-      scope split: main 5, subagent 3
-      bot split:
+      by agent:
+      freyja - 8 total triggers, 10 attempts
+      by channel account:
       Discord / @community-bot - 8 total triggers, 10 attempts
-         scope split: main 5, subagent 3
 2. git-pr - total 11 triggers, 12 attempts
    by installation:
    Mac-mini - 7 total triggers, 7 attempts
-      scope split: main 5, subagent 2
-      bot split:
+      by agent:
+      odin - 4 total triggers, 4 attempts
+      loki - 3 total triggers, 3 attempts
+      by channel account:
       Discord / @sales-bot - 7 total triggers, 7 attempts
-         scope split: main 5, subagent 2
    MBP - 4 total triggers, 5 attempts
-      scope split: main 3, subagent 1
-      bot split:
+      by agent:
+      freyja - 4 total triggers, 5 attempts
+      by channel account:
       Telegram / @alerts-bot - 4 total triggers, 5 attempts
-         scope split: main 3, subagent 1
 3. prepare-svp-weekly-report - total 4 triggers, 4 attempts
    by installation:
    Mac-mini - 4 total triggers, 4 attempts
-      scope split: main 4, subagent 0
-      bot split:
+      by agent:
+      odin - 4 total triggers, 4 attempts
+      by channel account:
       Discord / @sales-bot - 4 total triggers, 4 attempts
-         scope split: main 4, subagent 0
 ```
 
 ```text
@@ -236,9 +253,9 @@ cloud instance: zero_abc123
 expires at: 2026-04-06T10:00:00.000Z
 claim URL: https://...
 synced totals: 38 triggers, 45 attempts
-members: 2 installations, 3 agents, 6 subagent runs
+members: 2 installations, 3 agents, 3 channel accounts
 last observed at: 2026-03-08T07:40:00.000Z
-metadata sent: skill id/name, installation id/label, bot key/label/platform, agent id, session scope, timestamps, status, latency
+metadata sent: skill id/name, installation id/label, channel account key/label/platform, agent id, routing/session identifiers, timestamps, status, latency
 ```
 
 ## Why this can become a default plugin

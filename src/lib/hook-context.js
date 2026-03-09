@@ -239,9 +239,13 @@ export function normalizeRunContext(payload) {
     getNestedValue(payload, ["context", "isSubagent"]) === true ||
     getNestedValue(payload, ["session", "isSubagent"]) === true;
   const botPlatform = firstString(
+    payload?.botPlatform,
+    payload?.accountPlatform,
     payload?.platform,
     payload?.provider,
     payload?.service,
+    getNestedString(payload, ["context", "botPlatform"]),
+    getNestedString(payload, ["context", "accountPlatform"]),
     getNestedString(payload, ["context", "platform"]),
     getNestedString(payload, ["context", "provider"]),
     getNestedString(payload, ["context", "service"]),
@@ -257,7 +261,9 @@ export function normalizeRunContext(payload) {
   );
   const botId = firstString(
     payload?.botId,
+    payload?.accountId,
     getNestedString(payload, ["context", "botId"]),
+    getNestedString(payload, ["context", "accountId"]),
     getNestedString(payload, ["bot", "id"]),
     getNestedString(payload, ["account", "id"]),
     getNestedString(payload, ["context", "bot", "id"]),
@@ -271,7 +277,11 @@ export function normalizeRunContext(payload) {
   );
   const botName = firstString(
     payload?.botName,
+    payload?.accountName,
+    payload?.accountUsername,
     getNestedString(payload, ["context", "botName"]),
+    getNestedString(payload, ["context", "accountName"]),
+    getNestedString(payload, ["context", "accountUsername"]),
     getNestedString(payload, ["bot", "name"]),
     getNestedString(payload, ["bot", "username"]),
     getNestedString(payload, ["account", "name"]),

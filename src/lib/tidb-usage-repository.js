@@ -85,7 +85,15 @@ function sortBots(left, right) {
   return (
     right.triggerCount - left.triggerCount ||
     right.attemptCount - left.attemptCount ||
-    left.botLabel.localeCompare(right.botLabel)
+    (left.accountLabel ?? left.botLabel).localeCompare(right.accountLabel ?? right.botLabel)
+  );
+}
+
+function sortAgents(left, right) {
+  return (
+    right.triggerCount - left.triggerCount ||
+    right.attemptCount - left.attemptCount ||
+    left.agentLabel.localeCompare(right.agentLabel)
   );
 }
 
@@ -327,6 +335,7 @@ export class TiDBUsageRepository {
         COUNT(*) AS attemptCount,
         COUNT(DISTINCT installation_id) AS installationCount,
         COUNT(DISTINCT agent_id) AS agentCount,
+        COUNT(DISTINCT bot_key) AS accountCount,
         COUNT(DISTINCT CASE WHEN session_scope = 'subagent' THEN COALESCE(NULLIF(run_id, ''), NULLIF(session_key, ''), NULLIF(session_id, ''), NULLIF(trigger_anchor, '')) END) AS subagentRunCount
       FROM skill_usage_events
       WHERE usage_space_id = ?
@@ -381,12 +390,30 @@ export class TiDBUsageRepository {
         attemptCount: Number(row.attemptCount ?? 0),
         mainTriggerCount: Number(row.mainTriggerCount ?? 0),
         subagentTriggerCount: Number(row.subagentTriggerCount ?? 0),
-        bots: [],
+        agents: [],
+        accounts: [],
       };
       current.push(installation);
       installationsBySkill.set(row.skillId, current);
       installationLookup.set(`${row.skillId}:${row.installationId}`, installation);
     });
+    const [agentRows] = await this.connection.query(
+      `SELECT
+        skill_id AS skillId,
+        installation_id AS installationId,
+        agent_id AS agentId,
+        agent_id AS agentLabel,
+        SUM(CASE WHEN first_trigger THEN 1 ELSE 0 END) AS triggerCount,
+        COUNT(*) AS attemptCount
+      FROM skill_usage_events
+      WHERE usage_space_id = ?
+      ${period.where}
+      AND skill_id IN (${placeholders})
+      AND agent_id IS NOT NULL
+      GROUP BY skill_id, installation_id, agent_id
+      ORDER BY triggerCount DESC, attemptCount DESC, agentLabel ASC`,
+      [usageSpaceId, ...skillIds],
+    );
     const [botRows] = await this.connection.query(
       `SELECT
         skill_id AS skillId,
@@ -408,6 +435,21 @@ export class TiDBUsageRepository {
       [usageSpaceId, ...skillIds],
     );
 
+    agentRows.forEach((row) => {
+      const installation = installationLookup.get(`${row.skillId}:${row.installationId}`);
+
+      if (!installation) {
+        return;
+      }
+
+      installation.agents.push({
+        agentId: row.agentId,
+        agentLabel: row.agentLabel,
+        triggerCount: Number(row.triggerCount ?? 0),
+        attemptCount: Number(row.attemptCount ?? 0),
+      });
+    });
+
     botRows.forEach((row) => {
       const installation = installationLookup.get(`${row.skillId}:${row.installationId}`);
 
@@ -415,10 +457,10 @@ export class TiDBUsageRepository {
         return;
       }
 
-      installation.bots.push({
-        botKey: row.botKey,
-        botLabel: row.botLabel,
-        botPlatform: row.botPlatform,
+      installation.accounts.push({
+        accountKey: row.botKey,
+        accountLabel: row.botLabel,
+        accountPlatform: row.botPlatform,
         triggerCount: Number(row.triggerCount ?? 0),
         attemptCount: Number(row.attemptCount ?? 0),
         mainTriggerCount: Number(row.mainTriggerCount ?? 0),
@@ -435,11 +477,13 @@ export class TiDBUsageRepository {
         attemptCount: Number(row.attemptCount ?? 0),
         installationCount: Number(row.installationCount ?? 0),
         agentCount: Number(row.agentCount ?? 0),
+        accountCount: Number(row.accountCount ?? 0),
         subagentRunCount: Number(row.subagentRunCount ?? 0),
         installations: (installationsBySkill.get(row.skillId) ?? [])
           .map((installation) => ({
             ...installation,
-            bots: installation.bots.sort(sortBots),
+            agents: installation.agents.sort(sortAgents),
+            accounts: installation.accounts.sort(sortBots),
           }))
           .sort(sortInstallations),
       })),
@@ -454,6 +498,7 @@ export class TiDBUsageRepository {
         SUM(CASE WHEN first_trigger THEN 1 ELSE 0 END) AS totalTriggers,
         COUNT(DISTINCT installation_id) AS installationCount,
         COUNT(DISTINCT agent_id) AS agentCount,
+        COUNT(DISTINCT bot_key) AS accountCount,
         COUNT(DISTINCT CASE WHEN session_scope = 'subagent' THEN COALESCE(NULLIF(run_id, ''), NULLIF(session_key, ''), NULLIF(session_id, ''), NULLIF(trigger_anchor, '')) END) AS subagentRunCount,
         MAX(observed_at) AS lastObservedAt
       FROM skill_usage_events
@@ -467,6 +512,7 @@ export class TiDBUsageRepository {
       totalTriggers: Number(row.totalTriggers ?? 0),
       installationCount: Number(row.installationCount ?? 0),
       agentCount: Number(row.agentCount ?? 0),
+      accountCount: Number(row.accountCount ?? 0),
       subagentRunCount: Number(row.subagentRunCount ?? 0),
       lastObservedAt: normalizeDate(row.lastObservedAt),
     };

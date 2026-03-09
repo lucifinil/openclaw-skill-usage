@@ -53,6 +53,7 @@ class FakeRepository {
           attemptCount: 0,
           installationIds: new Set(),
           agentIds: new Set(),
+          accountKeys: new Set(),
           subagentRunIds: new Set(),
           installations: new Map(),
         };
@@ -70,6 +71,9 @@ class FakeRepository {
       if (event.agentId) {
         current.agentIds.add(event.agentId);
       }
+      if (event.botKey) {
+        current.accountKeys.add(event.botKey);
+      }
       if (event.sessionScope === "subagent" && event.runId) {
         current.subagentRunIds.add(event.runId);
       }
@@ -81,7 +85,8 @@ class FakeRepository {
           attemptCount: 0,
           mainTriggerCount: 0,
           subagentTriggerCount: 0,
-          bots: new Map(),
+          agents: new Map(),
+          accounts: new Map(),
         };
       installationCurrent.attemptCount += 1;
       if (event.firstTrigger) {
@@ -92,27 +97,41 @@ class FakeRepository {
           installationCurrent.mainTriggerCount += 1;
         }
       }
+      if (event.agentId) {
+        const agentCurrent =
+          installationCurrent.agents.get(event.agentId) ?? {
+            agentId: event.agentId,
+            agentLabel: event.agentId,
+            triggerCount: 0,
+            attemptCount: 0,
+          };
+        agentCurrent.attemptCount += 1;
+        if (event.firstTrigger) {
+          agentCurrent.triggerCount += 1;
+        }
+        installationCurrent.agents.set(event.agentId, agentCurrent);
+      }
       if (event.botKey) {
-        const botCurrent =
-          installationCurrent.bots.get(event.botKey) ?? {
-            botKey: event.botKey,
-            botLabel: event.botLabel ?? event.botKey,
-            botPlatform: event.botPlatform ?? null,
+        const accountCurrent =
+          installationCurrent.accounts.get(event.botKey) ?? {
+            accountKey: event.botKey,
+            accountLabel: event.botLabel ?? event.botKey,
+            accountPlatform: event.botPlatform ?? null,
             triggerCount: 0,
             attemptCount: 0,
             mainTriggerCount: 0,
             subagentTriggerCount: 0,
           };
-        botCurrent.attemptCount += 1;
+        accountCurrent.attemptCount += 1;
         if (event.firstTrigger) {
-          botCurrent.triggerCount += 1;
+          accountCurrent.triggerCount += 1;
           if (event.sessionScope === "subagent") {
-            botCurrent.subagentTriggerCount += 1;
+            accountCurrent.subagentTriggerCount += 1;
           } else {
-            botCurrent.mainTriggerCount += 1;
+            accountCurrent.mainTriggerCount += 1;
           }
         }
-        installationCurrent.bots.set(event.botKey, botCurrent);
+        installationCurrent.accounts.set(event.botKey, accountCurrent);
       }
       current.installations.set(event.installationId, installationCurrent);
 
@@ -138,15 +157,22 @@ class FakeRepository {
           attemptCount: row.attemptCount,
           installationCount: row.installationIds.size,
           agentCount: row.agentIds.size,
+          accountCount: row.accountKeys.size,
           subagentRunCount: row.subagentRunIds.size,
           installations: Array.from(row.installations.values())
             .map((installation) => ({
               ...installation,
-              bots: Array.from(installation.bots.values()).sort(
+              agents: Array.from(installation.agents.values()).sort(
                 (left, right) =>
                   right.triggerCount - left.triggerCount ||
                   right.attemptCount - left.attemptCount ||
-                  left.botLabel.localeCompare(right.botLabel),
+                  left.agentLabel.localeCompare(right.agentLabel),
+              ),
+              accounts: Array.from(installation.accounts.values()).sort(
+                (left, right) =>
+                  right.triggerCount - left.triggerCount ||
+                  right.attemptCount - left.attemptCount ||
+                  left.accountLabel.localeCompare(right.accountLabel),
               ),
             }))
             .sort(
@@ -169,12 +195,16 @@ class FakeRepository {
     const rows = Array.from(this.events.values()).filter((event) => event.usageSpaceId === usageSpaceId);
     const installations = new Set();
     const agents = new Set();
+    const accounts = new Set();
     const subagentRuns = new Set();
 
     rows.forEach((event) => {
       installations.add(event.installationId);
       if (event.agentId) {
         agents.add(event.agentId);
+      }
+      if (event.botKey) {
+        accounts.add(event.botKey);
       }
       if (event.sessionScope === "subagent" && event.runId) {
         subagentRuns.add(event.runId);
@@ -186,6 +216,7 @@ class FakeRepository {
       totalTriggers: rows.filter((event) => event.firstTrigger).length,
       installationCount: installations.size,
       agentCount: agents.size,
+      accountCount: accounts.size,
       subagentRunCount: subagentRuns.size,
       lastObservedAt: rows.at(-1)?.observedAt ?? null,
     };
@@ -381,11 +412,19 @@ test("cloud sync provisions once and aggregates top skills", async () => {
         attemptCount: 2,
         mainTriggerCount: 1,
         subagentTriggerCount: 0,
-        bots: [
+        agents: [
           {
-            botKey: "discord:123",
-            botLabel: "Discord / @sales-bot",
-            botPlatform: "discord",
+            agentId: "main",
+            agentLabel: "main",
+            triggerCount: 1,
+            attemptCount: 2,
+          },
+        ],
+        accounts: [
+          {
+            accountKey: "discord:123",
+            accountLabel: "Discord / @sales-bot",
+            accountPlatform: "discord",
             triggerCount: 1,
             attemptCount: 2,
             mainTriggerCount: 1,
@@ -400,7 +439,15 @@ test("cloud sync provisions once and aggregates top skills", async () => {
         attemptCount: 1,
         mainTriggerCount: 1,
         subagentTriggerCount: 0,
-        bots: [],
+        agents: [
+          {
+            agentId: "main",
+            agentLabel: "main",
+            triggerCount: 1,
+            attemptCount: 1,
+          },
+        ],
+        accounts: [],
       },
     ]);
   } finally {
@@ -463,6 +510,7 @@ test("command handler returns top rankings and join tokens", async () => {
             attemptCount: 4,
             installationCount: 2,
             agentCount: 2,
+            accountCount: 1,
             subagentRunCount: 1,
             installations: [
               {
@@ -472,11 +520,19 @@ test("command handler returns top rankings and join tokens", async () => {
                 attemptCount: 3,
                 mainTriggerCount: 1,
                 subagentTriggerCount: 1,
-                bots: [
+                agents: [
                   {
-                    botKey: "discord:123",
-                    botLabel: "Discord / @sales-bot",
-                    botPlatform: "discord",
+                    agentId: "main",
+                    agentLabel: "main",
+                    triggerCount: 2,
+                    attemptCount: 3,
+                  },
+                ],
+                accounts: [
+                  {
+                    accountKey: "discord:123",
+                    accountLabel: "Discord / @sales-bot",
+                    accountPlatform: "discord",
                     triggerCount: 2,
                     attemptCount: 3,
                     mainTriggerCount: 1,
@@ -491,7 +547,15 @@ test("command handler returns top rankings and join tokens", async () => {
                 attemptCount: 1,
                 mainTriggerCount: 1,
                 subagentTriggerCount: 0,
-                bots: [],
+                agents: [
+                  {
+                    agentId: "main",
+                    agentLabel: "main",
+                    triggerCount: 1,
+                    attemptCount: 1,
+                  },
+                ],
+                accounts: [],
               },
             ],
           },
@@ -520,6 +584,7 @@ test("command handler returns top rankings and join tokens", async () => {
           totalAttempts: 4,
           installationCount: 2,
           agentCount: 2,
+          accountCount: 1,
           subagentRunCount: 1,
         },
       };

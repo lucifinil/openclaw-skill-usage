@@ -71,13 +71,22 @@ function sortBots(left, right) {
   return (
     right.triggerCount - left.triggerCount ||
     right.attemptCount - left.attemptCount ||
-    left.botLabel.localeCompare(right.botLabel)
+    (left.accountLabel ?? left.botLabel).localeCompare(right.accountLabel ?? right.botLabel)
+  );
+}
+
+function sortAgents(left, right) {
+  return (
+    right.triggerCount - left.triggerCount ||
+    right.attemptCount - left.attemptCount ||
+    left.agentLabel.localeCompare(right.agentLabel)
   );
 }
 
 function summarizeRows(events) {
   const installations = new Set();
   const agents = new Set();
+  const accounts = new Set();
   const subagentRuns = new Set();
   let totalAttempts = 0;
   let totalTriggers = 0;
@@ -94,6 +103,9 @@ function summarizeRows(events) {
     if (event.agentId) {
       agents.add(event.agentId);
     }
+    if (event.botKey) {
+      accounts.add(event.botKey);
+    }
     const subagentIdentity = resolveSubagentIdentityKey(event);
     if (subagentIdentity) {
       subagentRuns.add(subagentIdentity);
@@ -108,6 +120,7 @@ function summarizeRows(events) {
     totalTriggers,
     installationCount: installations.size,
     agentCount: agents.size,
+    accountCount: accounts.size,
     subagentRunCount: subagentRuns.size,
     lastObservedAt,
   };
@@ -148,6 +161,7 @@ export class LocalUsageAnalytics {
           attemptCount: 0,
           installationIds: new Set(),
           agentIds: new Set(),
+          accountKeys: new Set(),
           subagentRunIds: new Set(),
           installations: new Map(),
         };
@@ -164,6 +178,9 @@ export class LocalUsageAnalytics {
       if (event.agentId) {
         current.agentIds.add(event.agentId);
       }
+      if (event.botKey) {
+        current.accountKeys.add(event.botKey);
+      }
       const subagentIdentity = resolveSubagentIdentityKey(event);
       if (subagentIdentity) {
         current.subagentRunIds.add(subagentIdentity);
@@ -176,7 +193,8 @@ export class LocalUsageAnalytics {
           attemptCount: 0,
           mainTriggerCount: 0,
           subagentTriggerCount: 0,
-          bots: new Map(),
+          agents: new Map(),
+          accounts: new Map(),
         };
       installationCurrent.attemptCount += 1;
       if (event.firstTrigger) {
@@ -187,27 +205,41 @@ export class LocalUsageAnalytics {
           installationCurrent.mainTriggerCount += 1;
         }
       }
+      if (event.agentId) {
+        const agentCurrent =
+          installationCurrent.agents.get(event.agentId) ?? {
+            agentId: event.agentId,
+            agentLabel: event.agentId,
+            triggerCount: 0,
+            attemptCount: 0,
+          };
+        agentCurrent.attemptCount += 1;
+        if (event.firstTrigger) {
+          agentCurrent.triggerCount += 1;
+        }
+        installationCurrent.agents.set(event.agentId, agentCurrent);
+      }
       if (event.botKey) {
-        const botCurrent =
-          installationCurrent.bots.get(event.botKey) ?? {
-            botKey: event.botKey,
-            botLabel: event.botLabel ?? event.botKey,
-            botPlatform: event.botPlatform ?? null,
+        const accountCurrent =
+          installationCurrent.accounts.get(event.botKey) ?? {
+            accountKey: event.botKey,
+            accountLabel: event.botLabel ?? event.botKey,
+            accountPlatform: event.botPlatform ?? null,
             triggerCount: 0,
             attemptCount: 0,
             mainTriggerCount: 0,
             subagentTriggerCount: 0,
           };
-        botCurrent.attemptCount += 1;
+        accountCurrent.attemptCount += 1;
         if (event.firstTrigger) {
-          botCurrent.triggerCount += 1;
+          accountCurrent.triggerCount += 1;
           if (event.sessionScope === "subagent") {
-            botCurrent.subagentTriggerCount += 1;
+            accountCurrent.subagentTriggerCount += 1;
           } else {
-            botCurrent.mainTriggerCount += 1;
+            accountCurrent.mainTriggerCount += 1;
           }
         }
-        installationCurrent.bots.set(event.botKey, botCurrent);
+        installationCurrent.accounts.set(event.botKey, accountCurrent);
       }
       current.installations.set(installationId, installationCurrent);
 
@@ -233,11 +265,13 @@ export class LocalUsageAnalytics {
           attemptCount: row.attemptCount,
           installationCount: row.installationIds.size,
           agentCount: row.agentIds.size,
+          accountCount: row.accountKeys.size,
           subagentRunCount: row.subagentRunIds.size,
           installations: Array.from(row.installations.values())
             .map((installation) => ({
               ...installation,
-              bots: Array.from(installation.bots.values()).sort(sortBots),
+              agents: Array.from(installation.agents.values()).sort(sortAgents),
+              accounts: Array.from(installation.accounts.values()).sort(sortBots),
             }))
             .sort(sortInstallations),
         }))

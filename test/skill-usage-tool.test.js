@@ -18,6 +18,7 @@ test("skill usage tool renders top rankings", async () => {
             attemptCount: 6,
             installationCount: 2,
             agentCount: 2,
+            accountCount: 1,
             subagentRunCount: 1,
             installations: [
               {
@@ -27,11 +28,19 @@ test("skill usage tool renders top rankings", async () => {
                 attemptCount: 4,
                 mainTriggerCount: 2,
                 subagentTriggerCount: 1,
-                bots: [
+                agents: [
                   {
-                    botKey: "discord:123",
-                    botLabel: "Discord / @sales-bot",
-                    botPlatform: "discord",
+                    agentId: "odin",
+                    agentLabel: "odin",
+                    triggerCount: 3,
+                    attemptCount: 4,
+                  },
+                ],
+                accounts: [
+                  {
+                    accountKey: "discord:123",
+                    accountLabel: "Discord / @sales-bot",
+                    accountPlatform: "discord",
                     triggerCount: 3,
                     attemptCount: 4,
                     mainTriggerCount: 2,
@@ -46,7 +55,15 @@ test("skill usage tool renders top rankings", async () => {
                 attemptCount: 2,
                 mainTriggerCount: 2,
                 subagentTriggerCount: 0,
-                bots: [],
+                agents: [
+                  {
+                    agentId: "loki",
+                    agentLabel: "loki",
+                    triggerCount: 2,
+                    attemptCount: 2,
+                  },
+                ],
+                accounts: [],
               },
             ],
           },
@@ -65,11 +82,12 @@ test("skill usage tool renders top rankings", async () => {
   assert.match(result.content[0].text, /Top skills for 30 days/);
   assert.match(result.content[0].text, /git-pr/);
   assert.match(result.content[0].text, /Mac-mini - 3 total triggers, 4 attempts/);
-  assert.match(result.content[0].text, /scope split: main 2, subagent 1/);
-  assert.match(result.content[0].text, /bot split:/);
+  assert.match(result.content[0].text, /by agent:/);
+  assert.match(result.content[0].text, /odin - 3 total triggers, 4 attempts/);
+  assert.match(result.content[0].text, /by channel account:/);
   assert.match(result.content[0].text, /Discord \/ @sales-bot - 3 total triggers, 4 attempts/);
   assert.match(result.content[0].text, /MBP - 2 total triggers, 2 attempts/);
-  assert.match(result.content[0].text, /scope split: main 2, subagent 0/);
+  assert.match(result.content[0].text, /loki - 2 total triggers, 2 attempts/);
 });
 
 test("skill usage tool renders status output", async () => {
@@ -94,6 +112,7 @@ test("skill usage tool renders status output", async () => {
             totalAttempts: 9,
             installationCount: 2,
             agentCount: 3,
+            accountCount: 2,
             subagentRunCount: 4,
           },
         };

@@ -6,16 +6,31 @@ export function formatExpiry(expiresAt) {
   return new Date(expiresAt).toISOString();
 }
 
-function formatBotBreakdownLines(bots) {
-  if (!Array.isArray(bots) || bots.length === 0) {
+function formatAccountBreakdownLines(accounts) {
+  if (!Array.isArray(accounts) || accounts.length === 0) {
     return [];
   }
 
-  const lines = ["      bot split:"];
+  const lines = ["      by channel account:"];
 
-  bots.forEach((bot) => {
-    lines.push(`      ${bot.botLabel} - ${bot.triggerCount} total triggers, ${bot.attemptCount} attempts`);
-    lines.push(`         scope split: main ${bot.mainTriggerCount ?? 0}, subagent ${bot.subagentTriggerCount ?? 0}`);
+  accounts.forEach((account) => {
+    lines.push(
+      `      ${account.accountLabel} - ${account.triggerCount} total triggers, ${account.attemptCount} attempts`,
+    );
+  });
+
+  return lines;
+}
+
+function formatAgentBreakdownLines(agents) {
+  if (!Array.isArray(agents) || agents.length === 0) {
+    return [];
+  }
+
+  const lines = ["      by agent:"];
+
+  agents.forEach((agent) => {
+    lines.push(`      ${agent.agentLabel} - ${agent.triggerCount} total triggers, ${agent.attemptCount} attempts`);
   });
 
   return lines;
@@ -32,10 +47,8 @@ function formatInstallationBreakdownLines(installations) {
     lines.push(
       `   ${installation.installationLabel} - ${installation.triggerCount} total triggers, ${installation.attemptCount} attempts`,
     );
-    lines.push(
-      `      scope split: main ${installation.mainTriggerCount ?? 0}, subagent ${installation.subagentTriggerCount ?? 0}`,
-    );
-    lines.push(...formatBotBreakdownLines(installation.bots));
+    lines.push(...formatAgentBreakdownLines(installation.agents));
+    lines.push(...formatAccountBreakdownLines(installation.accounts));
   });
 
   return lines;
@@ -65,9 +78,9 @@ export function formatTopResult(result) {
 
   const lines = [`Top skills for ${result.period.label}:`];
   lines.push(`data source: ${formatDataSource(result)}`);
-  if (result.aggregationScope === "local-installation") {
-    lines.push("scope: this installation only");
-  }
+  lines.push(
+    `scope: ${result.aggregationScope === "usage-space" ? "current usage space" : "this installation only"}`,
+  );
   if (result.degradedReason) {
     lines.push(`cloud status: ${result.degradedReason}`);
   }
@@ -94,10 +107,10 @@ export function formatStatus(status) {
     `expires at: ${formatExpiry(status.zero?.expiresAt)}`,
     `claim URL: ${status.zero?.claimUrl ?? "not available"}`,
     `${totalsLabel}: ${status.summary.totalTriggers} triggers, ${status.summary.totalAttempts} attempts`,
-    `members: ${status.summary.installationCount} installations, ${status.summary.agentCount} agents, ${status.summary.subagentRunCount} subagent runs`,
+    `members: ${status.summary.installationCount} installations, ${status.summary.agentCount} agents, ${status.summary.accountCount ?? 0} channel accounts`,
     `last observed at: ${status.summary.lastObservedAt ?? "none yet"}`,
     ...(status.degradedReason ? [`cloud status: ${status.degradedReason}`] : []),
-    "metadata sent: skill id/name, installation id/label, bot key/label/platform, agent id, session scope, timestamps, status, latency",
+    "metadata sent: skill id/name, installation id/label, channel account key/label/platform, agent id, routing/session identifiers, timestamps, status, latency",
   ].join("\n");
 }
 
