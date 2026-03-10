@@ -112,6 +112,17 @@ Sync behavior:
 - `/skillusage status` shows `last cloud sync`, `pending local records`, and `last sync error`
 - `/skillusage sync full` forces a full resync of the local event history into the current usage space
 
+## Identity and sync model
+
+Important implementation detail:
+
+- `skill-usage-events.jsonl` is the plugin-owned local event log
+- OpenClaw transcripts and session metadata are currently the more reliable source of routed identity
+- local analytics may enrich raw events at query time
+- cloud sync should upload the enriched local event view, not rely on raw local events being complete
+
+See `DESIGN.md` for the full rationale and guardrails.
+
 ## Remote routing capture
 
 If you need to validate Discord or Telegram routing fields on a real OpenClaw server, enable sanitized routing capture temporarily:
