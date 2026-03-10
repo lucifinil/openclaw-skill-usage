@@ -131,12 +131,14 @@ local raw events
 
 ## Query Flow
 
-For `/skillusage top <period>`:
+For `/skillusage top <period>` in a **joined usage space**:
 
 1. load all snapshots for the current usage space and period
 2. aggregate rows across installations in the app layer
 3. preserve per-installation truth while aggregating usage-space totals
 4. render via existing compact/detail presenters
+
+For **local-only usage spaces**, the system should continue to trust local enriched analytics first rather than forcing a cloud snapshot path.
 
 ## Join Semantics
 
