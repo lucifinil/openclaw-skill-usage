@@ -94,13 +94,11 @@ metadata sent: skill id/name, installation id/label, channel account key/label/p
 
 ## What it does
 
-- counts every installed skill by actual use
-- ranks skills for `1d`, `7d`, `30d`, and `all`
-- auto-provisions TiDB Cloud Zero on first sync
-- shares counts across multiple OpenClaw installations with a join token
-- shows each skill's total first, then a per-installation breakdown using installation labels
-- splits each installation by routed agent and channel account when that metadata is available
-- keeps local-first defaults: one installation starts in its own usage space automatically
+- shows which skills are actually getting used instead of just sitting installed
+- ranks your skills for `1d`, `7d`, `30d`, and `all`
+- tells you which agent or channel account is driving a skill when routing metadata is available
+- starts local-first by default, then lets you share a leaderboard across installations with one join token
+- auto-provisions TiDB Cloud Zero on first sync so you do not need to wire up a database first
 - exposes both a slash command and an agent tool
 
 ## What counts as one skill use

@@ -25,6 +25,21 @@
       "databaseName": {
         "type": "string",
         "description": "Database name used inside the TiDB Cloud Zero instance for analytics tables."
+      },
+      "installationLabel": {
+        "type": "string",
+        "description": "Override the default hostname-derived installation label shown in rankings."
+      },
+      "accountAliases": {
+        "type": "object",
+        "description": "Map stable channel-account keys to the labels you want to see in rankings.",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "captureRoutingSamples": {
+        "type": "boolean",
+        "description": "Temporarily capture sanitized routing samples for debugging real Discord or Telegram routing fields."
       }
     }
   },
@@ -43,6 +58,16 @@
     "databaseName": {
       "label": "Database name",
       "placeholder": "openclaw_skill_usage"
+    },
+    "installationLabel": {
+      "label": "Installation label",
+      "placeholder": "MBP"
+    },
+    "accountAliases": {
+      "label": "Account aliases"
+    },
+    "captureRoutingSamples": {
+      "label": "Capture routing samples"
     }
   }
 }
