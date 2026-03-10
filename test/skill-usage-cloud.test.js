@@ -773,7 +773,9 @@ test("command handler returns top rankings and join tokens", async () => {
     cloud,
     args: "top 7d",
   });
-  assert.match(top.text, /Top skills for 7 days/);
+  assert.match(top.text, /git-pr \(3\)/);
+  assert.match(top.text, /agent:\s+main 2/);
+  assert.match(top.text, /channel:\s+Discord \/ @sales-bot 2/);
 
   const token = await runSkillUsageCommand({
     cloud,

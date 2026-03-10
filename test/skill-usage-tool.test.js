@@ -79,15 +79,12 @@ test("skill usage tool renders top rankings", async () => {
   });
 
   assert.equal(result.content[0].type, "text");
-  assert.match(result.content[0].text, /Top skills for 30 days/);
-  assert.match(result.content[0].text, /git-pr/);
-  assert.match(result.content[0].text, /Mac-mini - 3 total triggers, 4 attempts/);
-  assert.match(result.content[0].text, /by agent:/);
-  assert.match(result.content[0].text, /odin - 3 total triggers, 4 attempts/);
-  assert.match(result.content[0].text, /by channel account:/);
-  assert.match(result.content[0].text, /Discord \/ @sales-bot - 3 total triggers, 4 attempts/);
-  assert.match(result.content[0].text, /MBP - 2 total triggers, 2 attempts/);
-  assert.match(result.content[0].text, /loki - 2 total triggers, 2 attempts/);
+  assert.match(result.content[0].text, /git-pr \(5\)/);
+  assert.match(result.content[0].text, /Mac-mini \(3\)/);
+  assert.match(result.content[0].text, /agent:\s+odin 3/);
+  assert.match(result.content[0].text, /channel:\s+Discord \/ @sales-bot 3/);
+  assert.match(result.content[0].text, /MBP \(2\)/);
+  assert.match(result.content[0].text, /agent:\s+loki 2/);
 });
 
 test("skill usage tool renders status output", async () => {
@@ -181,5 +178,108 @@ test("skill usage tool renders unknown channel-account bucket when breakdown is 
     params: { action: "top", period: "7d", limit: 5 },
   });
 
-  assert.match(result.content[0].text, /Unknown channel account - 3 total triggers, 3 attempts \(routing metadata incomplete\)/);
+  assert.match(result.content[0].text, /weather \(29\)/);
+  assert.match(result.content[0].text, /agent:\s+elon 18 \| main 10 \| tim 1/i);
+  assert.match(result.content[0].text, /channel:\s+disc\/el 18 \| wa 6 \| tim 2 \| unknown 3/i);
+});
+
+
+test("skill usage tool can render compact top output", async () => {
+  const result = await executeSkillUsageTool({
+    cloud: {
+      async queryTopSkillsWithFallback() {
+        return {
+          source: "cloud",
+          cloudState: "healthy",
+          aggregationScope: "usage-space",
+          period: { key: "7d", label: "7 days" },
+          rows: [
+            {
+              skillId: "weather",
+              skillName: "weather",
+              triggerCount: 37,
+              attemptCount: 37,
+              installationCount: 1,
+              agentCount: 4,
+              accountCount: 4,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Fans-MacBook-Air.local",
+                  triggerCount: 37,
+                  attemptCount: 37,
+                  agents: [
+                    { agentId: "elon", agentLabel: "elon", triggerCount: 24, attemptCount: 24 },
+                    { agentId: "main", agentLabel: "main", triggerCount: 10, attemptCount: 10 },
+                    { agentId: "tim", agentLabel: "tim", triggerCount: 1, attemptCount: 1 },
+                    { agentId: "unknown", agentLabel: "Unknown agent", triggerCount: 2, attemptCount: 2 },
+                  ],
+                  accounts: [
+                    { accountKey: "discord:elon", accountLabel: "Discord / elon", triggerCount: 18, attemptCount: 18 },
+                    { accountKey: "whatsapp:default", accountLabel: "Whatsapp / default", triggerCount: 6, attemptCount: 6 },
+                    { accountKey: "discord:tim", accountLabel: "Discord / tim", triggerCount: 2, attemptCount: 2 },
+                    { accountKey: "unknown", accountLabel: "Unknown channel account", triggerCount: 11, attemptCount: 11 },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    },
+    params: { action: "top", period: "7d", limit: 5 },
+  });
+
+  assert.match(result.content[0].text, /weather \(37\)/);
+  assert.match(result.content[0].text, /agent:\s+elon 24 \| main 10 \| tim 1 \| unknown 2/i);
+  assert.match(result.content[0].text, /channel:\s+disc\/el 18 \| wa 6 \| tim 2 \| unknown 11/i);
+});
+
+
+test("skill usage tool still supports detail top output", async () => {
+  const result = await executeSkillUsageTool({
+    cloud: {
+      async queryTopSkillsWithFallback() {
+        return {
+          source: "cloud",
+          cloudState: "healthy",
+          aggregationScope: "usage-space",
+          period: { key: "7d", label: "7 days" },
+          rows: [
+            {
+              skillId: "weather",
+              skillName: "weather",
+              triggerCount: 37,
+              attemptCount: 37,
+              installationCount: 1,
+              agentCount: 4,
+              accountCount: 4,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Fans-MacBook-Air.local",
+                  triggerCount: 37,
+                  attemptCount: 37,
+                  agents: [
+                    { agentId: "elon", agentLabel: "elon", triggerCount: 24, attemptCount: 24 },
+                    { agentId: "main", agentLabel: "main", triggerCount: 10, attemptCount: 10 },
+                  ],
+                  accounts: [
+                    { accountKey: "discord:elon", accountLabel: "Discord / elon", triggerCount: 18, attemptCount: 18 },
+                    { accountKey: "whatsapp:default", accountLabel: "Whatsapp / default", triggerCount: 6, attemptCount: 6 },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    },
+    params: { action: "top", period: "7d", limit: 5, format: "detail" },
+  });
+
+  assert.match(result.content[0].text, /1\. weather - total 37 triggers, 37 attempts/);
+  assert.match(result.content[0].text, /by installation:/);
+  assert.match(result.content[0].text, /by agent:/);
+  assert.match(result.content[0].text, /by channel account:/);
 });
