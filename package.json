@@ -3,7 +3,24 @@
   "version": "0.1.0",
   "description": "Zero-config OpenClaw skill usage analytics with OpenClaw hooks and TiDB Cloud Zero sync.",
   "type": "module",
-  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lucifinil/openclaw-skill-usage.git"
+  },
+  "homepage": "https://github.com/lucifinil/openclaw-skill-usage#readme",
+  "bugs": {
+    "url": "https://github.com/lucifinil/openclaw-skill-usage/issues"
+  },
+  "files": [
+    "src",
+    "skills",
+    "design",
+    "docs",
+    "README.md",
+    "DESIGN.md",
+    "openclaw.plugin.json"
+  ],
   "dependencies": {
     "mysql2": "^3.15.3"
   },
