@@ -232,6 +232,20 @@ export class TiDBUsageRepository {
           `ALTER TABLE skill_usage_events
             ADD INDEX IF NOT EXISTS idx_usage_space_bot_period (usage_space_id, bot_key, observed_at)`,
         );
+        await this.connection.query(
+          `CREATE TABLE IF NOT EXISTS usage_space_top_snapshots (
+            usage_space_id VARCHAR(64) NOT NULL,
+            installation_id VARCHAR(64) NOT NULL,
+            installation_label VARCHAR(191) NOT NULL,
+            period_key VARCHAR(16) NOT NULL,
+            schema_version INT NOT NULL,
+            generated_at DATETIME(6) NOT NULL,
+            payload_json LONGTEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (usage_space_id, installation_id, period_key)
+          )`,
+        );
 
         this.ready = true;
       })().finally(() => {
@@ -400,6 +414,62 @@ export class TiDBUsageRepository {
       return {
         uploaded: events.length,
       };
+    });
+  }
+
+  async upsertTopSnapshots(snapshots) {
+    if (!Array.isArray(snapshots) || snapshots.length === 0) {
+      return { uploaded: 0 };
+    }
+
+    return this.withReconnect(async (connection) => {
+      for (const snapshot of snapshots) {
+        await connection.execute(
+          `INSERT INTO usage_space_top_snapshots (
+            usage_space_id,
+            installation_id,
+            installation_label,
+            period_key,
+            schema_version,
+            generated_at,
+            payload_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            installation_label = VALUES(installation_label),
+            schema_version = VALUES(schema_version),
+            generated_at = VALUES(generated_at),
+            payload_json = VALUES(payload_json)`,
+          [
+            sqlValue(snapshot.usageSpaceId),
+            sqlValue(snapshot.installationId),
+            sqlValue(snapshot.installationLabel),
+            sqlValue(snapshot.periodKey),
+            sqlValue(snapshot.schemaVersion),
+            sqlValue(normalizeDate(snapshot.generatedAt)),
+            JSON.stringify(snapshot.payload ?? {}),
+          ],
+        );
+      }
+      return { uploaded: snapshots.length };
+    });
+  }
+
+  async queryTopSnapshots({ usageSpaceId, periodKey }) {
+    return this.withReconnect(async (connection) => {
+      const [rows] = await connection.query(
+        `SELECT installation_id AS installationId, installation_label AS installationLabel, period_key AS periodKey, schema_version AS schemaVersion, generated_at AS generatedAt, payload_json AS payloadJson
+         FROM usage_space_top_snapshots
+         WHERE usage_space_id = ? AND period_key = ?`,
+        [usageSpaceId, periodKey],
+      );
+      return rows.map((row) => ({
+        installationId: row.installationId,
+        installationLabel: row.installationLabel,
+        periodKey: row.periodKey,
+        schemaVersion: Number(row.schemaVersion ?? 1),
+        generatedAt: normalizeDate(row.generatedAt),
+        payload: JSON.parse(row.payloadJson ?? '{}'),
+      }));
     });
   }
 

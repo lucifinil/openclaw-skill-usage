@@ -2,6 +2,7 @@ import { formatStatus, formatTopResult } from "./skill-usage-presenter.js";
 
 const PERIOD_VALUES = new Set(["1d", "7d", "30d", "all"]);
 const ACTION_VALUES = new Set(["top", "status"]);
+const FORMAT_VALUES = new Set(["compact", "detail"]);
 
 function normalizePeriod(period) {
   if (!period) {
@@ -13,6 +14,14 @@ function normalizePeriod(period) {
   }
 
   return period;
+}
+
+function normalizeFormat(format) {
+  if (!format) return "compact";
+  if (!FORMAT_VALUES.has(format)) {
+    throw new Error(`Unsupported format "${format}". Use compact or detail.`);
+  }
+  return format;
 }
 
 function normalizeLimit(limit) {
@@ -53,6 +62,11 @@ export const skillUsageToolDefinition = {
         maximum: 25,
         description: "Maximum number of ranked skills to return for action=top.",
       },
+      format: {
+        type: "string",
+        enum: ["compact", "detail"],
+        description: "Output style for top results. Defaults to compact.",
+      },
     },
     required: ["action"],
   },
@@ -86,7 +100,7 @@ export async function executeSkillUsageTool({ cloud, params }) {
     content: [
       {
         type: "text",
-        text: formatTopResult(result),
+        text: formatTopResult(result, { format: normalizeFormat(params?.format) }),
       },
     ],
   };

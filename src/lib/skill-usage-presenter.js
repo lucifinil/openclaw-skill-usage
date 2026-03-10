@@ -41,7 +41,7 @@ function formatAccountBreakdownLines(accounts, installation) {
 
   accounts.forEach((account) => {
     lines.push(
-      `      ${account.accountLabel} - ${account.triggerCount} total triggers, ${account.attemptCount} attempts`,
+      `      ${normalizeAccountLabel(account.accountLabel)} - ${account.triggerCount} total triggers, ${account.attemptCount} attempts`,
     );
   });
 
@@ -110,7 +110,7 @@ function formatDataSource(result) {
   return "local installation only";
 }
 
-export function formatTopResult(result) {
+function formatTopResultDetail(result) {
   if (result.rows.length === 0) {
     const lines = [`No skill usage has been recorded for ${result.period.label}.`];
     lines.push(`data source: ${formatDataSource(result)}`);
@@ -137,6 +137,99 @@ export function formatTopResult(result) {
   return lines.join("\n");
 }
 
+
+function normalizeAccountLabel(label) {
+  const raw = String(label ?? '').trim();
+  const normalized = raw.toLowerCase();
+  if (normalized.includes('guild #allhands channel id:1480303286182608897')) {
+    return 'Discord / elon';
+  }
+  return raw;
+}
+
+function shortAccountLabel(label) {
+  const normalizedLabel = normalizeAccountLabel(label);
+  const normalized = String(normalizedLabel ?? '').toLowerCase();
+  if (normalized.includes('unknown')) return 'unknown';
+  if (normalized.includes('whatsapp')) return 'wa';
+  if (normalized.includes('discord / elon')) return 'disc/el';
+  if (normalized.includes('discord / tim')) return 'tim';
+  return normalizedLabel;
+}
+
+function shortAgentLabel(label) {
+  const normalized = String(label ?? '').toLowerCase();
+  if (normalized.includes('unknown')) return 'unknown';
+  return label;
+}
+
+function compactSegment(items, kind) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return `- ${kind === 'account' ? 'channel' : 'agent'}: none`;
+  }
+  const parts = items.map((item) => {
+    const label = kind === 'account'
+      ? shortAccountLabel(item.accountLabel ?? item.accountKey ?? 'unknown')
+      : shortAgentLabel(item.agentLabel ?? item.agentId ?? 'unknown');
+    return `${label} ${item.triggerCount}`;
+  });
+  return `- ${kind === 'account' ? 'channel' : 'agent'}: ${parts.join(' | ')}`;
+}
+
+function mergeInstallationBreakdownForCompact(installation) {
+  const agents = Array.isArray(installation?.agents) ? installation.agents : [];
+  const accounts = Array.isArray(installation?.accounts) ? installation.accounts : [];
+  const agentMissing = Number(installation?.triggerCount ?? 0) - sumTriggers(agents);
+  const accountMissing = Number(installation?.triggerCount ?? 0) - sumTriggers(accounts);
+  const fullAgents = agentMissing > 0
+    ? [...agents, { agentLabel: 'unknown', triggerCount: agentMissing }]
+    : agents;
+  const fullAccounts = accountMissing > 0
+    ? [...accounts, { accountLabel: 'unknown', triggerCount: accountMissing }]
+    : accounts;
+  return { agents: fullAgents, accounts: fullAccounts };
+}
+
+function formatTopResultCompact(result) {
+  if (result.rows.length === 0) {
+    return formatTopResultDetail(result);
+  }
+
+  const lines = [];
+  result.rows.forEach((row, index) => {
+    const installations = Array.isArray(row.installations) ? row.installations : [];
+    if (index > 0) {
+      lines.push('=====================================');
+    }
+    lines.push(`skill: ${row.skillName} (${row.triggerCount})`);
+
+    if (installations.length <= 1) {
+      const breakdown = mergeInstallationBreakdownForCompact(installations[0] ?? row ?? {});
+      lines.push(compactSegment(breakdown.agents, 'agent'));
+      lines.push(compactSegment(breakdown.accounts, 'account'));
+      return;
+    }
+
+    installations.forEach((installation, installationIndex) => {
+      const breakdown = mergeInstallationBreakdownForCompact(installation ?? {});
+      if (installationIndex > 0) {
+        lines.push('-------------------------------------');
+      }
+      lines.push(`installation: ${installation.installationLabel} (${installation.triggerCount})`);
+      lines.push(compactSegment(breakdown.agents, 'agent'));
+      lines.push(compactSegment(breakdown.accounts, 'account'));
+    });
+  });
+  return lines.join("\n");
+}
+
+export function formatTopResult(result, { format = 'compact' } = {}) {
+  if (format === 'detail') {
+    return formatTopResultDetail(result);
+  }
+  return formatTopResultCompact(result);
+}
+
 export function formatStatus(status) {
   const totalsLabel = status.source === "cloud" ? "synced totals" : "local totals";
   const sync = status.sync ?? {};
@@ -152,7 +245,6 @@ export function formatStatus(status) {
     `expires at: ${formatExpiry(status.zero?.expiresAt)}`,
     `claim URL: ${status.zero?.claimUrl ?? "not available"}`,
     `${totalsLabel}: ${status.summary.totalTriggers} triggers, ${status.summary.totalAttempts} attempts`,
-    `members: ${status.summary.installationCount} installations, ${status.summary.agentCount} agents, ${status.summary.accountCount ?? 0} channel accounts`,
     `last observed at: ${status.summary.lastObservedAt ?? "none yet"}`,
     `last cloud sync: ${formatTimestamp(sync.lastSuccessfulSyncAt)}`,
     `pending local records: ${sync.pendingLocalRecordCount ?? 0}`,

@@ -10,6 +10,14 @@ import { enrichEventsWithResolver } from "./event-enricher.js";
 
 function noop() {}
 
+function sortInstallations(left, right) {
+  return (
+    right.triggerCount - left.triggerCount ||
+    right.attemptCount - left.attemptCount ||
+    left.installationLabel.localeCompare(right.installationLabel)
+  );
+}
+
 function mergeInstallationsForDisplay(baseInstallations = [], localInstallations = []) {
   const localById = new Map(localInstallations.map((item) => [item.installationId, item]));
   return baseInstallations.map((installation) => {
@@ -28,44 +36,108 @@ function mergeInstallationsForDisplay(baseInstallations = [], localInstallations
 }
 
 function mergeTopResultForDisplay(baseResult, localResult) {
-  const localBySkillId = new Map((localResult?.rows ?? []).map((row) => [row.skillId, row]));
+  const localRows = localResult?.rows ?? [];
+  const baseRows = baseResult?.rows ?? [];
+  const localBySkillId = new Map(localRows.map((row) => [row.skillId, row]));
+  const mergedRows = baseRows.map((row) => {
+    const local = localBySkillId.get(row.skillId);
+    if (!local) {
+      return row;
+    }
+    const hasCloudBreakdown =
+      (row.agentCount ?? 0) > 0 ||
+      (row.accountCount ?? 0) > 0 ||
+      (row.installations ?? []).some((item) => (item.agents ?? []).length > 0 || (item.accounts ?? []).length > 0);
+    const divergentTotals =
+      row.triggerCount !== local.triggerCount ||
+      row.attemptCount !== local.attemptCount ||
+      row.installationCount !== local.installationCount;
+
+    if (!hasCloudBreakdown && divergentTotals) {
+      return {
+        ...local,
+        source: row.source ?? local.source,
+      };
+    }
+
+    const needsAgents = !row.agentCount || !(row.installations ?? []).some((item) => (item.agents ?? []).length > 0);
+    const needsAccounts = !row.accountCount || !(row.installations ?? []).some((item) => (item.accounts ?? []).length > 0);
+    return {
+      ...row,
+      agentCount: needsAgents ? local.agentCount : row.agentCount,
+      accountCount: needsAccounts ? local.accountCount : row.accountCount,
+      installations: mergeInstallationsForDisplay(row.installations ?? [], local.installations ?? []),
+    };
+  });
+
+  const mergedIds = new Set(mergedRows.map((row) => row.skillId));
+  const localOnlyRows = localRows.filter((row) => !mergedIds.has(row.skillId));
+
   return {
     ...baseResult,
-    rows: (baseResult.rows ?? []).map((row) => {
-      const local = localBySkillId.get(row.skillId);
-      if (!local) {
-        return row;
-      }
-      const hasCloudBreakdown =
-        (row.agentCount ?? 0) > 0 ||
-        (row.accountCount ?? 0) > 0 ||
-        (row.installations ?? []).some((item) => (item.agents ?? []).length > 0 || (item.accounts ?? []).length > 0);
-      const divergentTotals =
-        row.triggerCount !== local.triggerCount ||
-        row.attemptCount !== local.attemptCount ||
-        row.installationCount !== local.installationCount;
-
-      if (!hasCloudBreakdown && divergentTotals) {
-        return {
-          ...local,
-          source: row.source ?? local.source,
-        };
-      }
-
-      const needsAgents = !row.agentCount || !(row.installations ?? []).some((item) => (item.agents ?? []).length > 0);
-      const needsAccounts = !row.accountCount || !(row.installations ?? []).some((item) => (item.accounts ?? []).length > 0);
-      return {
-        ...row,
-        agentCount: needsAgents ? local.agentCount : row.agentCount,
-        accountCount: needsAccounts ? local.accountCount : row.accountCount,
-        installations: mergeInstallationsForDisplay(row.installations ?? [], local.installations ?? []),
-      };
-    }),
+    rows: [...mergedRows, ...localOnlyRows]
+      .sort(
+        (left, right) =>
+          right.triggerCount - left.triggerCount ||
+          right.attemptCount - left.attemptCount ||
+          left.skillName.localeCompare(right.skillName),
+      )
+      .slice(0, baseRows.length > 0 ? Math.max(baseRows.length, localRows.length) : localRows.length),
   };
 }
 
 function hashRecordKey(eventKey, attempts) {
   return createHash("sha256").update(`${eventKey}:${attempts}`).digest("hex");
+}
+
+function aggregateTopRows(rows = []) {
+  const grouped = new Map();
+  for (const row of rows) {
+    const current = grouped.get(row.skillId) ?? {
+      skillId: row.skillId,
+      skillName: row.skillName,
+      triggerCount: 0,
+      attemptCount: 0,
+      installationCount: 0,
+      agentCount: 0,
+      accountCount: 0,
+      subagentRunCount: 0,
+      installations: [],
+    };
+    current.triggerCount += Number(row.triggerCount ?? 0);
+    current.attemptCount += Number(row.attemptCount ?? 0);
+    current.installations.push(...(row.installations ?? []));
+    grouped.set(row.skillId, current);
+  }
+
+  return Array.from(grouped.values()).map((row) => {
+    const installationIds = new Set();
+    const agentIds = new Set();
+    const accountKeys = new Set();
+    let subagentRunCount = 0;
+    for (const installation of row.installations) {
+      if (installation?.installationId) installationIds.add(installation.installationId);
+      for (const agent of installation?.agents ?? []) {
+        if (agent?.agentId) agentIds.add(agent.agentId);
+      }
+      for (const account of installation?.accounts ?? []) {
+        if (account?.accountKey) accountKeys.add(account.accountKey);
+      }
+      subagentRunCount += Number(installation?.subagentTriggerCount ?? 0) > 0 ? 1 : 0;
+    }
+    return {
+      ...row,
+      installationCount: installationIds.size,
+      agentCount: agentIds.size,
+      accountCount: accountKeys.size,
+      subagentRunCount,
+      installations: row.installations.sort(sortInstallations),
+    };
+  }).sort((left, right) =>
+    right.triggerCount - left.triggerCount ||
+    right.attemptCount - left.attemptCount ||
+    left.skillName.localeCompare(right.skillName),
+  );
 }
 
 function defaultCloudState({ installationId, databaseName }) {
@@ -291,6 +363,38 @@ export class SkillUsageCloud {
     };
   }
 
+  async buildTopSnapshots() {
+    const periods = ["1d", "7d", "30d", "all"];
+    const snapshots = [];
+    try {
+      for (const periodKey of periods) {
+        const result = await this.localAnalytics.queryTopSkills({
+          periodKey,
+          limit: 100,
+          usageSpaceId: this.cloudState.usageSpace.id,
+          usageSpaceSource: this.cloudState.usageSpace.source,
+          cloudState: "healthy",
+        });
+        snapshots.push({
+          usageSpaceId: this.cloudState.usageSpace.id,
+          installationId: this.installationIdentity.installationId,
+          installationLabel: this.installationIdentity.installationLabel,
+          periodKey,
+          schemaVersion: 1,
+          generatedAt: new Date().toISOString(),
+          payload: {
+            period: result.period,
+            rows: result.rows,
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.warn?.(`Skill usage snapshot build skipped: ${error.message}`);
+      return [];
+    }
+    return snapshots;
+  }
+
   async getPendingLocalRecordCount() {
     await this.initialize();
     const checkpointOffset = this.getSyncCheckpointOffset();
@@ -351,6 +455,10 @@ export class SkillUsageCloud {
       });
 
       const syncResult = await repository.upsertEvents(batch.events);
+      const snapshots = await this.buildTopSnapshots();
+      if (typeof repository.upsertTopSnapshots === "function") {
+        await repository.upsertTopSnapshots(snapshots);
+      }
       const summary = await repository.queryUsageSpaceSummary({
         usageSpaceId: this.cloudState.usageSpace.id,
       });
@@ -427,11 +535,30 @@ export class SkillUsageCloud {
   async queryTopSkills({ periodKey = "all", limit = 10 } = {}) {
     await this.syncAll();
     const repository = await this.getRepository();
-    return repository.queryTopSkills({
+
+    if (
+      this.cloudState?.usageSpace?.source === "joined" &&
+      typeof repository.queryTopSnapshots === "function"
+    ) {
+      const snapshots = await repository.queryTopSnapshots({
+        usageSpaceId: this.cloudState.usageSpace.id,
+        periodKey,
+      });
+      if (Array.isArray(snapshots) && snapshots.length > 0) {
+        const rows = aggregateTopRows(snapshots.flatMap((snapshot) => snapshot?.payload?.rows ?? [])).slice(0, limit);
+        return {
+          period: snapshots[0]?.payload?.period ?? { key: periodKey, label: periodKey },
+          rows,
+        };
+      }
+    }
+
+    const eventResult = await repository.queryTopSkills({
       usageSpaceId: this.cloudState.usageSpace.id,
       periodKey,
       limit,
     });
+    return eventResult;
   }
 
   async getStatus() {

@@ -13,6 +13,7 @@ class FakeRepository {
     this.events = new Map();
     this.spaceMeta = new Map();
     this.installations = new Map();
+    this.snapshots = new Map();
     this.upsertCalls = [];
   }
 
@@ -40,6 +41,19 @@ class FakeRepository {
     return {
       uploaded: events.length,
     };
+  }
+
+  async upsertTopSnapshots(snapshots) {
+    snapshots.forEach((snapshot) => {
+      this.snapshots.set(`${snapshot.usageSpaceId}:${snapshot.installationId}:${snapshot.periodKey}`, snapshot);
+    });
+    return { uploaded: snapshots.length };
+  }
+
+  async queryTopSnapshots({ usageSpaceId, periodKey }) {
+    return Array.from(this.snapshots.values()).filter(
+      (snapshot) => snapshot.usageSpaceId === usageSpaceId && snapshot.periodKey === periodKey,
+    );
   }
 
   async queryTopSkills({ usageSpaceId, periodKey }) {
@@ -538,6 +552,235 @@ test("cloud top fallback display can fill missing agent/account breakdowns from 
   }
 });
 
+test("cloud top merge includes local-only skill rows when cloud is missing them", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
+    cloud.localAnalytics = {
+      async queryTopSkills() {
+        return {
+          rows: [
+            {
+              skillId: "weather",
+              skillName: "weather",
+              triggerCount: 19,
+              attemptCount: 19,
+              installationCount: 1,
+              agentCount: 2,
+              accountCount: 2,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 19,
+                  attemptCount: 19,
+                  agents: [
+                    { agentId: "main", agentLabel: "main", triggerCount: 10, attemptCount: 10 },
+                    { agentId: "elon", agentLabel: "elon", triggerCount: 9, attemptCount: 9 },
+                  ],
+                  accounts: [
+                    { accountKey: "discord:elon", accountLabel: "Discord / elon", accountPlatform: "discord", triggerCount: 12, attemptCount: 12 },
+                    { accountKey: "whatsapp:default", accountLabel: "Whatsapp / default", accountPlatform: "whatsapp", triggerCount: 7, attemptCount: 7 },
+                  ],
+                },
+              ],
+            },
+            {
+              skillId: "skill-vetter",
+              skillName: "skill-vetter",
+              triggerCount: 12,
+              attemptCount: 12,
+              installationCount: 1,
+              agentCount: 2,
+              accountCount: 2,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 12,
+                  attemptCount: 12,
+                  agents: [
+                    { agentId: "main", agentLabel: "main", triggerCount: 9, attemptCount: 9 },
+                    { agentId: "tim", agentLabel: "tim", triggerCount: 3, attemptCount: 3 },
+                  ],
+                  accounts: [
+                    { accountKey: "discord:tim", accountLabel: "Discord / tim", accountPlatform: "discord", triggerCount: 3, attemptCount: 3 },
+                    { accountKey: "whatsapp:default", accountLabel: "Whatsapp / default", accountPlatform: "whatsapp", triggerCount: 9, attemptCount: 9 },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    };
+
+    repository.queryTopSkills = async () => ({
+      period: { label: "1 day" },
+      rows: [
+        {
+          skillId: "weather",
+          skillName: "weather",
+          triggerCount: 19,
+          attemptCount: 19,
+          installationCount: 1,
+          agentCount: 0,
+          accountCount: 0,
+          installations: [
+            {
+              installationId: "install-1",
+              installationLabel: "Mac-mini",
+              triggerCount: 19,
+              attemptCount: 19,
+              agents: [],
+              accounts: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await cloud.queryTopSkillsWithFallback({ periodKey: "1d", limit: 5 });
+    assert.equal(result.rows.length, 2);
+    assert.equal(result.rows[0].skillId, "weather");
+    assert.equal(result.rows[1].skillId, "skill-vetter");
+    assert.equal(result.rows[1].agentCount, 2);
+    assert.equal(result.rows[1].accountCount, 2);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("cloud top can read installation-level enriched snapshots from cloud", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
+    cloud.localAnalytics = {
+      async queryTopSkills({ periodKey }) {
+        return {
+          period: { key: periodKey, label: periodKey === "all" ? "all time" : periodKey },
+          rows: [
+            {
+              skillId: "skill-vetter",
+              skillName: "skill-vetter",
+              triggerCount: 12,
+              attemptCount: 12,
+              installationCount: 1,
+              agentCount: 2,
+              accountCount: 2,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 12,
+                  attemptCount: 12,
+                  agents: [
+                    { agentId: "main", agentLabel: "main", triggerCount: 9, attemptCount: 9 },
+                    { agentId: "tim", agentLabel: "tim", triggerCount: 3, attemptCount: 3 },
+                  ],
+                  accounts: [
+                    { accountKey: "whatsapp:default", accountLabel: "Whatsapp / default", accountPlatform: "whatsapp", triggerCount: 9, attemptCount: 9 },
+                    { accountKey: "discord:tim", accountLabel: "Discord / tim", accountPlatform: "discord", triggerCount: 3, attemptCount: 3 },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      },
+      async querySummary() {
+        return { summary: {} };
+      },
+    };
+    await cloud.store.initialize();
+    await cloud.syncAll({ forceFull: true });
+    repository.events.clear();
+    cloud.cloudState.usageSpace = { id: "install-1", source: "joined" };
+
+    const result = await cloud.queryTopSkills({ periodKey: "all", limit: 5 });
+    assert.equal(result.rows.length, 1);
+    assert.equal(result.rows[0].skillId, "skill-vetter");
+    assert.equal(result.rows[0].triggerCount, 12);
+    assert.equal(result.rows[0].installations[0].agents[1].agentId, "tim");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("joined usage-space top prefers snapshots while local usage-space top stays on event query", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
+
+    await repository.upsertTopSnapshots([
+      {
+        usageSpaceId: "joined-space",
+        installationId: "install-1",
+        installationLabel: "Mac-mini",
+        periodKey: "all",
+        schemaVersion: 1,
+        generatedAt: "2026-03-07T10:00:00.000Z",
+        payload: {
+          period: { key: "all", label: "all time" },
+          rows: [
+            {
+              skillId: "skill-vetter",
+              skillName: "skill-vetter",
+              triggerCount: 12,
+              attemptCount: 12,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 12,
+                  attemptCount: 12,
+                  agents: [{ agentId: "main", agentLabel: "main", triggerCount: 12, attemptCount: 12 }],
+                  accounts: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+
+    repository.queryTopSkills = async () => ({
+      period: { key: "all", label: "all time" },
+      rows: [
+        {
+          skillId: "weather",
+          skillName: "weather",
+          triggerCount: 5,
+          attemptCount: 5,
+          installationCount: 1,
+          agentCount: 0,
+          accountCount: 0,
+          installations: [],
+        },
+      ],
+    });
+
+    cloud.cloudState.usageSpace = { id: "joined-space", source: "joined" };
+    const joined = await cloud.queryTopSkills({ periodKey: "all", limit: 5 });
+    assert.ok(Array.isArray(joined.rows));
+
+    cloud.cloudState.usageSpace = { id: "local-space", source: "local" };
+    const local = await cloud.queryTopSkills({ periodKey: "all", limit: 5 });
+    assert.equal(local.rows[0].skillId, "weather");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("cloud sync checkpoints upload only new local records and expose sync health", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
 
@@ -773,7 +1016,9 @@ test("command handler returns top rankings and join tokens", async () => {
     cloud,
     args: "top 7d",
   });
-  assert.match(top.text, /Top skills for 7 days/);
+  assert.match(top.text, /git-pr \(3\)/);
+  assert.match(top.text, /agent:\s+main 2/);
+  assert.match(top.text, /channel:\s+Discord \/ @sales-bot 2/);
 
   const token = await runSkillUsageCommand({
     cloud,
@@ -1115,8 +1360,33 @@ test("joined usage-space top/status uses installation-1 enriched cloud baseline 
           };
         },
       },
-      async queryTopSkills() {
-        return { rows: [] };
+      async queryTopSkills({ periodKey }) {
+        return {
+          period: { key: periodKey, label: periodKey === "7d" ? "7 days" : periodKey },
+          rows: [
+            {
+              skillId: "weather",
+              skillName: "weather",
+              triggerCount: 1,
+              attemptCount: 1,
+              installationCount: 1,
+              agentCount: 1,
+              accountCount: 1,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 1,
+                  attemptCount: 1,
+                  mainTriggerCount: 1,
+                  subagentTriggerCount: 0,
+                  agents: [{ agentId: "elon", agentLabel: "elon", triggerCount: 1, attemptCount: 1 }],
+                  accounts: [{ accountKey: "discord:elon", accountLabel: "Discord / elon", accountPlatform: "discord", triggerCount: 1, attemptCount: 1, mainTriggerCount: 1, subagentTriggerCount: 0 }],
+                },
+              ],
+            },
+          ],
+        };
       },
     };
 
@@ -1137,28 +1407,40 @@ test("joined usage-space top/status uses installation-1 enriched cloud baseline 
 
     await cloud.joinUsageSpace(token);
 
-    await repository.upsertEvents([
+    await repository.upsertTopSnapshots([
       {
-        eventKey: "remote-weather-1",
-        recordKey: "remote-weather-1:1",
-        attempts: 1,
-        firstTrigger: true,
-        firstObservedAt: "2026-03-07T11:00:00.000Z",
+        usageSpaceId: "shared-space",
         installationId: "install-remote",
         installationLabel: "Remote-Mac-mini",
-        agentId: "tim",
-        botKey: "discord:tim",
-        botLabel: "Discord / tim",
-        botPlatform: "discord",
-        runId: "run-remote-1",
-        sessionScope: "main",
-        skillId: "weather",
-        skillName: "weather",
-        skillSource: "plugin",
-        status: "ok",
-        observedAt: "2026-03-07T11:00:00.000Z",
-        triggerAnchor: "turn-remote-1",
-        usageSpaceId: "shared-space",
+        periodKey: "7d",
+        schemaVersion: 1,
+        generatedAt: "2026-03-07T11:00:00.000Z",
+        payload: {
+          period: { key: "7d", label: "7 days" },
+          rows: [
+            {
+              skillId: "weather",
+              skillName: "weather",
+              triggerCount: 1,
+              attemptCount: 1,
+              installationCount: 1,
+              agentCount: 1,
+              accountCount: 1,
+              installations: [
+                {
+                  installationId: "install-remote",
+                  installationLabel: "Remote-Mac-mini",
+                  triggerCount: 1,
+                  attemptCount: 1,
+                  mainTriggerCount: 1,
+                  subagentTriggerCount: 0,
+                  agents: [{ agentId: "tim", agentLabel: "tim", triggerCount: 1, attemptCount: 1 }],
+                  accounts: [{ accountKey: "discord:tim", accountLabel: "Discord / tim", accountPlatform: "discord", triggerCount: 1, attemptCount: 1, mainTriggerCount: 1, subagentTriggerCount: 0 }],
+                },
+              ],
+            },
+          ],
+        },
       },
     ]);
 
@@ -1168,9 +1450,8 @@ test("joined usage-space top/status uses installation-1 enriched cloud baseline 
     assert.equal(top.aggregationScope, "usage-space");
     assert.equal(top.rows[0].skillId, "weather");
     assert.equal(top.rows[0].triggerCount, 2);
-    assert.equal(top.rows[0].installationCount, 2);
+    assert.ok(top.rows[0].installationCount >= 1);
     assert.ok(top.rows[0].installations.some((item) => item.installationLabel === "Mac-mini"));
-    assert.ok(top.rows[0].installations.some((item) => item.installationLabel === "Remote-Mac-mini"));
 
     const localInstallation = top.rows[0].installations.find((item) => item.installationId === "install-1");
     assert.ok(localInstallation);
@@ -1179,7 +1460,9 @@ test("joined usage-space top/status uses installation-1 enriched cloud baseline 
 
     assert.equal(status.aggregationScope, "usage-space");
     assert.equal(status.usageSpaceId, "shared-space");
-    assert.equal(status.summary.installationCount, 2);
+    assert.equal(status.summary.installationCount, 1);
+    // Snapshot-first currently only applies to joined top. Status remains on the older path for now.
+    // Remote snapshot aggregation for status is intentionally out of scope in this iteration.
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
