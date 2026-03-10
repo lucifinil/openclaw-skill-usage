@@ -1,5 +1,30 @@
 import { enrichEventsWithResolver } from "./event-enricher.js";
 
+function mergeGenericPluginRows(rows = []) {
+  const pluginRows = new Map();
+  rows.forEach((row) => {
+    const match = /^(.+) \(includes plugin\)$/.exec(row?.skillName ?? "");
+    if (match) {
+      pluginRows.set(match[1], row);
+    }
+  });
+
+  return rows
+    .map((row) => {
+      const baseName = row?.skillName ?? "";
+      if (pluginRows.has(baseName)) {
+        const pluginRow = pluginRows.get(baseName);
+        if (pluginRow === row) return row;
+        return {
+          ...row,
+          skillId: pluginRow.skillId,
+          skillName: pluginRow.skillName,
+        };
+      }
+      return row;
+    });
+}
+
 function dedupeEvents(events) {
   const seen = new Set();
   const deduped = [];
@@ -183,7 +208,7 @@ export class LocalUsageAnalytics {
     const events = await this.listEventsForPeriod(periodKey);
     const grouped = new Map();
 
-    events.forEach((event) => {
+    mergeGenericPluginRows(events).forEach((event) => {
       const current =
         grouped.get(event.skillId) ?? {
           skillId: event.skillId,

@@ -238,7 +238,7 @@ test("plugin records memory tools as pseudo skill using configured memory slot",
         configOverride: {
           plugins: {
             slots: {
-              memory: "mem9",
+              memory: "memory-slot",
             },
           },
         },
@@ -258,8 +258,8 @@ test("plugin records memory tools as pseudo skill using configured memory slot",
       },
     });
 
-    assert.equal(record.skillName, "mem9 (includes plugin)");
-    assert.equal(record.skillId, "mem9-includes-plugin");
+    assert.equal(record.skillName, "memory-slot (includes plugin)");
+    assert.equal(record.skillId, "memory-slot-includes-plugin");
     assert.equal(record.firstTrigger, true);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

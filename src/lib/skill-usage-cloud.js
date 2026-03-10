@@ -90,9 +90,33 @@ function hashRecordKey(eventKey, attempts) {
   return createHash("sha256").update(`${eventKey}:${attempts}`).digest("hex");
 }
 
+function mergeGenericPluginRows(rows = []) {
+  const pluginRows = new Map();
+  rows.forEach((row) => {
+    const match = /^(.+) \(includes plugin\)$/.exec(row?.skillName ?? '');
+    if (match) {
+      pluginRows.set(match[1], row);
+    }
+  });
+
+  return rows.map((row) => {
+    const baseName = row?.skillName ?? '';
+    if (pluginRows.has(baseName)) {
+      const pluginRow = pluginRows.get(baseName);
+      if (pluginRow === row) return row;
+      return {
+        ...row,
+        skillId: pluginRow.skillId,
+        skillName: pluginRow.skillName,
+      };
+    }
+    return row;
+  });
+}
+
 function aggregateTopRows(rows = []) {
   const grouped = new Map();
-  for (const row of rows) {
+  for (const row of mergeGenericPluginRows(rows)) {
     const current = grouped.get(row.skillId) ?? {
       skillId: row.skillId,
       skillName: row.skillName,

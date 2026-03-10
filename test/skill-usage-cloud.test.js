@@ -654,6 +654,74 @@ test("cloud top merge includes local-only skill rows when cloud is missing them"
   }
 });
 
+test("cloud top merges base skill rows into generic includes-plugin rows", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
+
+    await repository.upsertTopSnapshots([
+      {
+        usageSpaceId: "joined-space",
+        installationId: "install-1",
+        installationLabel: "Mac-mini",
+        periodKey: "all",
+        schemaVersion: 1,
+        generatedAt: "2026-03-07T10:00:00.000Z",
+        payload: {
+          period: { key: "all", label: "all time" },
+          rows: [
+            {
+              skillId: "memory-slot-includes-plugin",
+              skillName: "memory-slot (includes plugin)",
+              triggerCount: 4,
+              attemptCount: 4,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 4,
+                  attemptCount: 4,
+                  agents: [],
+                  accounts: [],
+                },
+              ],
+            },
+            {
+              skillId: "memory-slot",
+              skillName: "memory-slot",
+              triggerCount: 2,
+              attemptCount: 2,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 2,
+                  attemptCount: 2,
+                  agents: [],
+                  accounts: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+
+    cloud.cloudState.usageSpace = { id: "joined-space", source: "joined" };
+    cloud.syncAll = async () => {};
+    const result = await cloud.queryTopSkills({ periodKey: "all", limit: 10 });
+    assert.equal(result.rows.length, 1);
+    assert.equal(result.rows[0].skillId, "memory-slot-includes-plugin");
+    assert.equal(result.rows[0].skillName, "memory-slot (includes plugin)");
+    assert.equal(result.rows[0].triggerCount, 6);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("cloud top can read installation-level enriched snapshots from cloud", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
 
@@ -1243,8 +1311,8 @@ test("cloud sync enriches pseudo-skill events before upload", async () => {
             latencyMs: 5,
             runId: "run-1",
             sessionScope: "main",
-            skillId: "mem9-includes-plugin",
-            skillName: "mem9 (includes plugin)",
+            skillId: "memory-slot-includes-plugin",
+            skillName: "memory-slot (includes plugin)",
             skillSource: "plugin",
             agentId: null,
             sessionId: null,
@@ -1303,7 +1371,7 @@ test("cloud sync enriches pseudo-skill events before upload", async () => {
   try {
     await cloud.syncAll();
     assert.equal(uploadedEvents.length, 1);
-    assert.equal(uploadedEvents[0].skillId, 'mem9-includes-plugin');
+    assert.equal(uploadedEvents[0].skillId, 'memory-slot-includes-plugin');
     assert.equal(uploadedEvents[0].agentId, 'elon');
     assert.equal(uploadedEvents[0].sessionKey, 'agent:elon:discord:channel:1480303286182608897');
     assert.equal(uploadedEvents[0].botKey, 'discord:elon');
