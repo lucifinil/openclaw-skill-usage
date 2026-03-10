@@ -181,6 +181,7 @@ test("skill usage tool renders unknown channel-account bucket when breakdown is 
   assert.match(result.content[0].text, /weather \(29\)/);
   assert.match(result.content[0].text, /agent:\s+elon 18 \| main 10 \| tim 1/i);
   assert.match(result.content[0].text, /channel:\s+disc\/el 18 \| wa 6 \| tim 2 \| unknown 3/i);
+  assert.doesNotMatch(result.content[0].text, /channel id:1480303286182608897/i);
 });
 
 
@@ -235,6 +236,50 @@ test("skill usage tool can render compact top output", async () => {
   assert.match(result.content[0].text, /channel:\s+disc\/el 18 \| wa 6 \| tim 2 \| unknown 11/i);
 });
 
+
+test("skill usage tool normalizes verbose Discord channel labels in compact output", async () => {
+  const result = await executeSkillUsageTool({
+    cloud: {
+      async queryTopSkillsWithFallback() {
+        return {
+          source: "cloud",
+          cloudState: "healthy",
+          aggregationScope: "usage-space",
+          period: { key: "7d", label: "7 days" },
+          rows: [
+            {
+              skillId: "github",
+              skillName: "github",
+              triggerCount: 5,
+              attemptCount: 5,
+              installationCount: 1,
+              agentCount: 1,
+              accountCount: 1,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Fans-MacBook-Air.local",
+                  triggerCount: 5,
+                  attemptCount: 5,
+                  agents: [
+                    { agentId: "elon", agentLabel: "elon", triggerCount: 5, attemptCount: 5 },
+                  ],
+                  accounts: [
+                    { accountKey: "discord:elon", accountLabel: "Discord / Guild #allhands channel id:1480303286182608897", triggerCount: 5, attemptCount: 5 },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    },
+    params: { action: "top", period: "7d", limit: 5 },
+  });
+
+  assert.match(result.content[0].text, /channel:\s+disc\/el 5/i);
+  assert.doesNotMatch(result.content[0].text, /channel id:1480303286182608897/i);
+});
 
 test("skill usage tool still supports detail top output", async () => {
   const result = await executeSkillUsageTool({

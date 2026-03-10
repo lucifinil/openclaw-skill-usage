@@ -538,6 +538,108 @@ test("cloud top fallback display can fill missing agent/account breakdowns from 
   }
 });
 
+test("cloud top merge includes local-only skill rows when cloud is missing them", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
+    cloud.localAnalytics = {
+      async queryTopSkills() {
+        return {
+          rows: [
+            {
+              skillId: "weather",
+              skillName: "weather",
+              triggerCount: 19,
+              attemptCount: 19,
+              installationCount: 1,
+              agentCount: 2,
+              accountCount: 2,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 19,
+                  attemptCount: 19,
+                  agents: [
+                    { agentId: "main", agentLabel: "main", triggerCount: 10, attemptCount: 10 },
+                    { agentId: "elon", agentLabel: "elon", triggerCount: 9, attemptCount: 9 },
+                  ],
+                  accounts: [
+                    { accountKey: "discord:elon", accountLabel: "Discord / elon", accountPlatform: "discord", triggerCount: 12, attemptCount: 12 },
+                    { accountKey: "whatsapp:default", accountLabel: "Whatsapp / default", accountPlatform: "whatsapp", triggerCount: 7, attemptCount: 7 },
+                  ],
+                },
+              ],
+            },
+            {
+              skillId: "skill-vetter",
+              skillName: "skill-vetter",
+              triggerCount: 12,
+              attemptCount: 12,
+              installationCount: 1,
+              agentCount: 2,
+              accountCount: 2,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Mac-mini",
+                  triggerCount: 12,
+                  attemptCount: 12,
+                  agents: [
+                    { agentId: "main", agentLabel: "main", triggerCount: 9, attemptCount: 9 },
+                    { agentId: "tim", agentLabel: "tim", triggerCount: 3, attemptCount: 3 },
+                  ],
+                  accounts: [
+                    { accountKey: "discord:tim", accountLabel: "Discord / tim", accountPlatform: "discord", triggerCount: 3, attemptCount: 3 },
+                    { accountKey: "whatsapp:default", accountLabel: "Whatsapp / default", accountPlatform: "whatsapp", triggerCount: 9, attemptCount: 9 },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    };
+
+    repository.queryTopSkills = async () => ({
+      period: { label: "1 day" },
+      rows: [
+        {
+          skillId: "weather",
+          skillName: "weather",
+          triggerCount: 19,
+          attemptCount: 19,
+          installationCount: 1,
+          agentCount: 0,
+          accountCount: 0,
+          installations: [
+            {
+              installationId: "install-1",
+              installationLabel: "Mac-mini",
+              triggerCount: 19,
+              attemptCount: 19,
+              agents: [],
+              accounts: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await cloud.queryTopSkillsWithFallback({ periodKey: "1d", limit: 5 });
+    assert.equal(result.rows.length, 2);
+    assert.equal(result.rows[0].skillId, "weather");
+    assert.equal(result.rows[1].skillId, "skill-vetter");
+    assert.equal(result.rows[1].agentCount, 2);
+    assert.equal(result.rows[1].accountCount, 2);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("cloud sync checkpoints upload only new local records and expose sync health", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
 

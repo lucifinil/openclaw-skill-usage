@@ -41,7 +41,7 @@ function formatAccountBreakdownLines(accounts, installation) {
 
   accounts.forEach((account) => {
     lines.push(
-      `      ${account.accountLabel} - ${account.triggerCount} total triggers, ${account.attemptCount} attempts`,
+      `      ${normalizeAccountLabel(account.accountLabel)} - ${account.triggerCount} total triggers, ${account.attemptCount} attempts`,
     );
   });
 
@@ -138,13 +138,23 @@ function formatTopResultDetail(result) {
 }
 
 
+function normalizeAccountLabel(label) {
+  const raw = String(label ?? '').trim();
+  const normalized = raw.toLowerCase();
+  if (normalized.includes('guild #allhands channel id:1480303286182608897')) {
+    return 'Discord / elon';
+  }
+  return raw;
+}
+
 function shortAccountLabel(label) {
-  const normalized = String(label ?? '').toLowerCase();
+  const normalizedLabel = normalizeAccountLabel(label);
+  const normalized = String(normalizedLabel ?? '').toLowerCase();
   if (normalized.includes('unknown')) return 'unknown';
   if (normalized.includes('whatsapp')) return 'wa';
   if (normalized.includes('discord / elon')) return 'disc/el';
   if (normalized.includes('discord / tim')) return 'tim';
-  return label;
+  return normalizedLabel;
 }
 
 function shortAgentLabel(label) {

@@ -164,6 +164,7 @@ Examples:
 - `Unknown agent` → `unknown`
 - `Whatsapp / default` → `wa`
 - `Discord / elon` → `disc/el`
+- verbose Discord channel labels such as `Discord / Guild #allhands channel id:...` should be normalized to a stable actor/account label like `Discord / elon` before compact shortening
 
 Rules:
 

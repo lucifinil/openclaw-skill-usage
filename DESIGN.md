@@ -104,3 +104,65 @@ When changing this plugin, preserve these invariants:
 3. Prefer a single transcript/session source for one event.
 4. Keep cloud sync aligned with local enriched analytics.
 5. Treat transcript/session metadata as canonical when raw events are incomplete.
+
+## Current direction: enriched snapshot sync first
+
+The current problem is no longer only identity reconstruction. We also need cloud/shared queries to reflect the same complete result set that local enriched analytics already knows how to produce.
+
+In practice, local enriched analytics currently has the strongest installation-level truth because it combines:
+
+- raw plugin-owned local JSONL events
+- transcript-derived skill observations
+- resolver-enriched routed identity
+- final per-skill / per-agent / per-channel aggregation
+
+That makes the current local top/status output the best available source of truth for one installation.
+
+### Why snapshot sync is the current preferred direction
+
+Instead of trying to upload every transcript-derived event immediately, the near-term preferred direction is:
+
+> upload an installation-level enriched snapshot/baseline to cloud
+> and use that as the shared source of truth for usage-space aggregation.
+
+This is preferred because it:
+
+- matches the strongest local truth we already trust
+- avoids transcript-derived event dedupe/checkpoint complexity in the short term
+- makes joined usage spaces easier to reason about
+- lets installation 1 establish a correct enriched baseline before installation 2 joins
+
+### Intended flow
+
+```text
+local raw events
+  + transcript-derived observations
+  + resolver-enriched identity
+  -> local enriched aggregate truth for installation N
+  -> sync enriched snapshot/baseline for installation N to cloud
+  -> cloud aggregates installation-level snapshots across the usage space
+  -> shared top/status queries read from cloud aggregate truth
+```
+
+### Join semantics under this direction
+
+- Before join, installation 1 should sync its enriched baseline to cloud.
+- After join, installation 2 should also sync its enriched baseline.
+- Cloud should aggregate per-installation truths, not flatten incomplete local raw data.
+- Query-time local merge may still exist as a safety net, but it should not be the long-term primary mechanism for correctness.
+
+### Event sync is still valuable later
+
+Event-level sync is still useful for:
+
+- precise historical replay
+- richer time-window recomputation
+- auditing and backfills
+- future correction/rebuild workflows
+
+But the current recommendation is:
+
+1. stabilize enriched snapshot sync first
+2. keep event sync as a follow-up enhancement
+
+This sequencing optimizes for correctness and simpler joins first, then richer history later.
