@@ -10,6 +10,88 @@ The product idea is simple:
 - You need an app chart.
 - The chart should work locally by default and become shareable with one command when you want it to.
 
+## Example output
+
+Default compact output:
+
+```text
+skill: weather (37)
+- agent: elon 26 | main 10 | tim 1
+- channel: disc/el 20 | wa 6 | tim 2 | unknown 9
+=====================================
+skill: skill-vetter (12)
+- agent: main 9 | tim 2 | elon 1
+- channel: wa 7 | disc/el 3 | tim 1 | unknown 1
+=====================================
+skill: github (8)
+- agent: elon 6 | main 1 | unknown 1
+- channel: disc/el 6 | wa 1 | unknown 1
+```
+
+Joined usage-space compact output keeps installation boundaries visible:
+
+```text
+skill: weather (34)
+installation: Fans-MacBook-Air.local (30)
+- agent: elon 19 | main 10 | tim 1
+- channel: disc/el 13 | wa 6 | tim 2 | unknown 9
+-------------------------------------
+installation: Remote-Mac-mini (4)
+- agent: tim 4
+- channel: tim 4
+=====================================
+skill: github (7)
+installation: Fans-MacBook-Air.local (5)
+- agent: elon 4 | main 1
+- channel: disc/el 4 | wa 1
+-------------------------------------
+installation: Remote-Mac-mini (2)
+- agent: tim 2
+- channel: tim 2
+```
+
+Verbose `detail` output is still available when you want the full breakdown:
+
+```text
+Top skills for 7 days:
+data source: cloud-synced usage space
+scope: current usage space
+1. gh-issue-pr-iterations - total 18 triggers, 22 attempts
+   by installation:
+   Mac-mini - 10 total triggers, 12 attempts
+      by agent:
+      odin - 6 total triggers, 7 attempts
+      loki - 4 total triggers, 5 attempts
+      by channel account:
+      Discord / @sales-bot - 7 total triggers, 8 attempts
+      Telegram / @alerts-bot - 3 total triggers, 4 attempts
+   MBP - 8 total triggers, 10 attempts
+      by agent:
+      freyja - 8 total triggers, 10 attempts
+      by channel account:
+      Discord / @community-bot - 8 total triggers, 10 attempts
+```
+
+Status output:
+
+```text
+Skill usage status:
+data source: cloud-synced usage space
+scope: current usage space
+usage space: 7f2c... (joined)
+this installation: Mac-mini
+database: openclaw_skill_usage
+cloud instance: zero_abc123
+expires at: 2026-04-06T10:00:00.000Z
+claim URL: https://...
+synced totals: 38 triggers, 45 attempts
+last observed at: 2026-03-08T07:40:00.000Z
+last cloud sync: 2026-03-08T07:40:02.000Z
+pending local records: 0
+last sync error: none
+metadata sent: skill id/name, installation id/label, channel account key/label/platform, agent id, routing/session identifiers, timestamps, status, latency
+```
+
 ## What it does
 
 - counts every installed skill by actual use
@@ -256,67 +338,6 @@ Important behavior:
 - each provisioned instance includes a claim URL and expiration timestamp
 
 If you want durable long-term history, claim the instance before it expires.
-
-## Example output
-
-```text
-Top skills for 7 days:
-data source: cloud-synced usage space
-scope: current usage space
-1. gh-issue-pr-iterations - total 18 triggers, 22 attempts
-   by installation:
-   Mac-mini - 10 total triggers, 12 attempts
-      by agent:
-      odin - 6 total triggers, 7 attempts
-      loki - 4 total triggers, 5 attempts
-      by channel account:
-      Discord / @sales-bot - 7 total triggers, 8 attempts
-      Telegram / @alerts-bot - 3 total triggers, 4 attempts
-   MBP - 8 total triggers, 10 attempts
-      by agent:
-      freyja - 8 total triggers, 10 attempts
-      by channel account:
-      Discord / @community-bot - 8 total triggers, 10 attempts
-2. git-pr - total 11 triggers, 12 attempts
-   by installation:
-   Mac-mini - 7 total triggers, 7 attempts
-      by agent:
-      odin - 4 total triggers, 4 attempts
-      loki - 3 total triggers, 3 attempts
-      by channel account:
-      Discord / @sales-bot - 7 total triggers, 7 attempts
-   MBP - 4 total triggers, 5 attempts
-      by agent:
-      freyja - 4 total triggers, 5 attempts
-      by channel account:
-      Telegram / @alerts-bot - 4 total triggers, 5 attempts
-3. prepare-svp-weekly-report - total 4 triggers, 4 attempts
-   by installation:
-   Mac-mini - 4 total triggers, 4 attempts
-      by agent:
-      odin - 4 total triggers, 4 attempts
-      by channel account:
-      Discord / @sales-bot - 4 total triggers, 4 attempts
-```
-
-```text
-Skill usage status:
-data source: cloud-synced usage space
-scope: current usage space
-usage space: 7f2c... (joined)
-this installation: Mac-mini
-database: openclaw_skill_usage
-cloud instance: zero_abc123
-expires at: 2026-04-06T10:00:00.000Z
-claim URL: https://...
-synced totals: 38 triggers, 45 attempts
-members: 2 installations, 3 agents, 3 channel accounts
-last observed at: 2026-03-08T07:40:00.000Z
-last cloud sync: 2026-03-08T07:40:02.000Z
-pending local records: 0
-last sync error: none
-metadata sent: skill id/name, installation id/label, channel account key/label/platform, agent id, routing/session identifiers, timestamps, status, latency
-```
 
 ## Why this can become a default plugin
 
