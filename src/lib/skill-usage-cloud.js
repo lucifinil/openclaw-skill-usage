@@ -6,40 +6,14 @@ import { TiDBUsageRepository } from "./tidb-usage-repository.js";
 import { encodeUsageSpaceToken, decodeUsageSpaceToken } from "./usage-space-token.js";
 import { provisionZeroInstance } from "./zero-client.js";
 import { LocalUsageAnalytics } from "./local-usage-analytics.js";
+import { enrichEventsWithResolver } from "./event-enricher.js";
 
 function noop() {}
 
-function normalizeInstallationLabelKey(label) {
-  if (typeof label !== "string") {
-    return null;
-  }
-
-  const trimmed = label.trim();
-  return trimmed.length > 0 ? trimmed.toLowerCase() : null;
-}
-
 function mergeInstallationsForDisplay(baseInstallations = [], localInstallations = []) {
-  const localById = new Map();
-  const localByLabel = new Map();
-
-  for (const installation of localInstallations) {
-    if (installation?.installationId) {
-      localById.set(installation.installationId, installation);
-    }
-    const labelKey = normalizeInstallationLabelKey(installation?.installationLabel);
-    if (labelKey && !localByLabel.has(labelKey)) {
-      localByLabel.set(labelKey, installation);
-    }
-  }
-
+  const localById = new Map(localInstallations.map((item) => [item.installationId, item]));
   return baseInstallations.map((installation) => {
-    let local = installation?.installationId ? localById.get(installation.installationId) : null;
-    if (!local) {
-      const labelKey = normalizeInstallationLabelKey(installation?.installationLabel);
-      if (labelKey && localByLabel.has(labelKey)) {
-        local = localByLabel.get(labelKey);
-      }
-    }
+    const local = localById.get(installation.installationId);
     if (!local) {
       return installation;
     }
@@ -62,6 +36,22 @@ function mergeTopResultForDisplay(baseResult, localResult) {
       if (!local) {
         return row;
       }
+      const hasCloudBreakdown =
+        (row.agentCount ?? 0) > 0 ||
+        (row.accountCount ?? 0) > 0 ||
+        (row.installations ?? []).some((item) => (item.agents ?? []).length > 0 || (item.accounts ?? []).length > 0);
+      const divergentTotals =
+        row.triggerCount !== local.triggerCount ||
+        row.attemptCount !== local.attemptCount ||
+        row.installationCount !== local.installationCount;
+
+      if (!hasCloudBreakdown && divergentTotals) {
+        return {
+          ...local,
+          source: row.source ?? local.source,
+        };
+      }
+
       const needsAgents = !row.agentCount || !(row.installations ?? []).some((item) => (item.agents ?? []).length > 0);
       const needsAccounts = !row.accountCount || !(row.installations ?? []).some((item) => (item.accounts ?? []).length > 0);
       return {
@@ -287,15 +277,16 @@ export class SkillUsageCloud {
   async buildCloudEvents({ forceFull = false } = {}) {
     const checkpointOffset = forceFull ? 0 : this.getSyncCheckpointOffset();
     const { events, nextOffset } = await this.store.readEventsFromOffset(checkpointOffset);
+    const enrichedEvents = await enrichEventsWithResolver(events, this.localAnalytics?.eventResolver ?? null);
 
     return {
       checkpointOffset,
       nextOffset,
-      events: events.map((event) => ({
-      ...event,
-      usageSpaceId: this.cloudState.usageSpace.id,
-      recordKey: hashRecordKey(event.eventKey, event.attempts),
-      installationLabel: event.installationLabel ?? this.installationIdentity.installationLabel,
+      events: enrichedEvents.map((event) => ({
+        ...event,
+        usageSpaceId: this.cloudState.usageSpace.id,
+        recordKey: hashRecordKey(event.eventKey, event.attempts),
+        installationLabel: event.installationLabel ?? this.installationIdentity.installationLabel,
       })),
     };
   }
