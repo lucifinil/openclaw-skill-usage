@@ -248,6 +248,7 @@ export function formatStatus(status) {
     `last observed at: ${status.summary.lastObservedAt ?? "none yet"}`,
     `last cloud sync: ${formatTimestamp(sync.lastSuccessfulSyncAt)}`,
     `pending local records: ${sync.pendingLocalRecordCount ?? 0}`,
+    ...(status.memoryRecords != null ? [`memory records: ${status.memoryRecords}`] : []),
     `last sync error: ${sync.lastError ?? "none"}`,
     ...(status.degradedReason ? [`cloud status: ${status.degradedReason}`] : []),
     "metadata sent: skill id/name, installation id/label, channel account key/label/platform, agent id, routing/session identifiers, timestamps, status, latency",

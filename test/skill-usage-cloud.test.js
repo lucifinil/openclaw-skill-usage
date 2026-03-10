@@ -257,7 +257,7 @@ class FakeRepository {
   async close() {}
 }
 
-function createCloud(tempDir, repository) {
+function createCloud(tempDir, repository, overrides = {}) {
   const store = new JsonlSkillUsageStore({
     rootDir: path.join(tempDir, "events"),
   });
@@ -301,6 +301,7 @@ function createCloud(tempDir, repository) {
       headers: new Headers(),
     }),
     repositoryFactory: () => repository,
+    ...overrides,
   });
 }
 
@@ -1135,6 +1136,22 @@ test("cloud falls back to local analytics when top queries fail", async () => {
     assert.equal(result.rows[0].skillName, "git-pr");
     assert.equal(result.rows[0].installations[0].installationLabel, "Mac-mini");
     assert.match(result.degradedReason, /network down/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("cloud status can include optional memory records metric", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository, {
+      memoryMetricsProvider: async () => ({ memoryRecords: 1620 }),
+    });
+    await cloud.initialize();
+    const status = await cloud.getStatusWithFallback();
+    assert.equal(status.memoryRecords, 1620);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

@@ -216,6 +216,7 @@ export class SkillUsageCloud {
     repositoryFactory,
     eventResolver = null,
     transcriptScanner = null,
+    memoryMetricsProvider = null,
   }) {
     this.stateDir = stateDir;
     this.installationIdentity = installationIdentity;
@@ -237,6 +238,7 @@ export class SkillUsageCloud {
         }));
     this.cloudStatePath = path.join(stateDir, "cloud.json");
     this.cloudState = null;
+    this.memoryMetricsProvider = memoryMetricsProvider;
     this.repository = null;
     this.repositoryKey = null;
     this.syncQueue = Promise.resolve();
@@ -600,12 +602,26 @@ export class SkillUsageCloud {
     };
   }
 
+  async resolveMemoryMetrics() {
+    if (typeof this.memoryMetricsProvider !== "function") {
+      return {};
+    }
+    try {
+      const metrics = await this.memoryMetricsProvider();
+      return metrics && typeof metrics === "object" ? metrics : {};
+    } catch (error) {
+      this.logger.warn?.(`Memory metrics unavailable: ${error.message}`);
+      return {};
+    }
+  }
+
   async getStatusWithFallback() {
     try {
       const status = await this.getStatus();
 
       return {
         ...status,
+        ...(await this.resolveMemoryMetrics()),
         source: "cloud",
         cloudState: "healthy",
         aggregationScope: "usage-space",
@@ -627,6 +643,7 @@ export class SkillUsageCloud {
 
       return {
         ...localStatus,
+        ...(await this.resolveMemoryMetrics()),
         sync: await this.getSyncStatus(),
       };
     }

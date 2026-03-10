@@ -117,6 +117,7 @@ test("skill usage tool renders status output", async () => {
           pendingLocalRecordCount: 0,
           lastError: null,
         },
+        memoryRecords: 1620,
       };
     },
   },
@@ -130,6 +131,7 @@ test("skill usage tool renders status output", async () => {
   assert.match(result.content[0].text, /this installation: Mac-mini/);
   assert.match(result.content[0].text, /last cloud sync:/);
   assert.match(result.content[0].text, /pending local records: 0/);
+  assert.match(result.content[0].text, /memory records: 1620/);
   assert.match(result.content[0].text, /last sync error: none/);
 });
 
