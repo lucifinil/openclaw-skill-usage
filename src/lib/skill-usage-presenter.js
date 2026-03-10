@@ -155,7 +155,7 @@ function shortAgentLabel(label) {
 
 function compactSegment(items, kind) {
   if (!Array.isArray(items) || items.length === 0) {
-    return kind === 'account' ? 'channel: none' : 'agent: none';
+    return `- ${kind === 'account' ? 'channel' : 'agent'}: none`;
   }
   const parts = items.map((item) => {
     const label = kind === 'account'
@@ -163,7 +163,7 @@ function compactSegment(items, kind) {
       : shortAgentLabel(item.agentLabel ?? item.agentId ?? 'unknown');
     return `${label} ${item.triggerCount}`;
   });
-  return `${kind === 'account' ? 'channel' : 'agent'}: ${parts.join(' | ')}`;
+  return `- ${kind === 'account' ? 'channel' : 'agent'}: ${parts.join(' | ')}`;
 }
 
 function mergeInstallationBreakdownForCompact(installation) {
@@ -188,21 +188,26 @@ function formatTopResultCompact(result) {
   const lines = [];
   result.rows.forEach((row, index) => {
     const installations = Array.isArray(row.installations) ? row.installations : [];
-    if (index > 0) lines.push('');
-    lines.push(`${row.skillName} (${row.triggerCount})`);
+    if (index > 0) {
+      lines.push('=====================================');
+    }
+    lines.push(`skill: ${row.skillName} (${row.triggerCount})`);
 
     if (installations.length <= 1) {
       const breakdown = mergeInstallationBreakdownForCompact(installations[0] ?? row ?? {});
-      lines.push(`  ${compactSegment(breakdown.agents, 'agent')}`);
-      lines.push(`  ${compactSegment(breakdown.accounts, 'account')}`);
+      lines.push(compactSegment(breakdown.agents, 'agent'));
+      lines.push(compactSegment(breakdown.accounts, 'account'));
       return;
     }
 
-    installations.forEach((installation) => {
+    installations.forEach((installation, installationIndex) => {
       const breakdown = mergeInstallationBreakdownForCompact(installation ?? {});
-      lines.push(`  ${installation.installationLabel} (${installation.triggerCount})`);
-      lines.push(`    ${compactSegment(breakdown.agents, 'agent')}`);
-      lines.push(`    ${compactSegment(breakdown.accounts, 'account')}`);
+      if (installationIndex > 0) {
+        lines.push('-------------------------------------');
+      }
+      lines.push(`installation: ${installation.installationLabel} (${installation.triggerCount})`);
+      lines.push(compactSegment(breakdown.agents, 'agent'));
+      lines.push(compactSegment(breakdown.accounts, 'account'));
     });
   });
   return lines.join("\n");
