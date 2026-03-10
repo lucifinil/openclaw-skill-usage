@@ -14,7 +14,25 @@ function formatTimestamp(value) {
   return new Date(value).toISOString();
 }
 
-function formatAccountBreakdownLines(accounts) {
+function sumTriggers(items) {
+  return (items ?? []).reduce((sum, item) => sum + Number(item?.triggerCount ?? 0), 0);
+}
+
+function sumAttempts(items) {
+  return (items ?? []).reduce((sum, item) => sum + Number(item?.attemptCount ?? item?.triggerCount ?? 0), 0);
+}
+
+function appendUnknownBucket(lines, { label, missingTriggers, missingAttempts, note }) {
+  if (missingTriggers <= 0 && missingAttempts <= 0) {
+    return;
+  }
+
+  lines.push(
+    `      ${label} - ${missingTriggers} total triggers, ${missingAttempts} attempts (${note})`,
+  );
+}
+
+function formatAccountBreakdownLines(accounts, installation) {
   if (!Array.isArray(accounts) || accounts.length === 0) {
     return [];
   }
@@ -27,10 +45,19 @@ function formatAccountBreakdownLines(accounts) {
     );
   });
 
+  const missingTriggers = Number(installation?.triggerCount ?? 0) - sumTriggers(accounts);
+  const missingAttempts = Number(installation?.attemptCount ?? installation?.triggerCount ?? 0) - sumAttempts(accounts);
+  appendUnknownBucket(lines, {
+    label: 'Unknown channel account',
+    missingTriggers,
+    missingAttempts,
+    note: 'routing metadata incomplete',
+  });
+
   return lines;
 }
 
-function formatAgentBreakdownLines(agents) {
+function formatAgentBreakdownLines(agents, installation) {
   if (!Array.isArray(agents) || agents.length === 0) {
     return [];
   }
@@ -39,6 +66,15 @@ function formatAgentBreakdownLines(agents) {
 
   agents.forEach((agent) => {
     lines.push(`      ${agent.agentLabel} - ${agent.triggerCount} total triggers, ${agent.attemptCount} attempts`);
+  });
+
+  const missingTriggers = Number(installation?.triggerCount ?? 0) - sumTriggers(agents);
+  const missingAttempts = Number(installation?.attemptCount ?? installation?.triggerCount ?? 0) - sumAttempts(agents);
+  appendUnknownBucket(lines, {
+    label: 'Unknown agent',
+    missingTriggers,
+    missingAttempts,
+    note: 'agent attribution incomplete',
   });
 
   return lines;
@@ -55,8 +91,8 @@ function formatInstallationBreakdownLines(installations) {
     lines.push(
       `   ${installation.installationLabel} - ${installation.triggerCount} total triggers, ${installation.attemptCount} attempts`,
     );
-    lines.push(...formatAgentBreakdownLines(installation.agents));
-    lines.push(...formatAccountBreakdownLines(installation.accounts));
+    lines.push(...formatAgentBreakdownLines(installation.agents, installation));
+    lines.push(...formatAccountBreakdownLines(installation.accounts, installation));
   });
 
   return lines;
