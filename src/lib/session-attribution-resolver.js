@@ -131,6 +131,25 @@ async function listSessionFiles(root) {
   return files;
 }
 
+function deriveTranscriptSessionIdentity(filePath) {
+  if (typeof filePath !== "string" || filePath.trim().length === 0) {
+    return { agentId: null, sessionId: null, sessionFile: null };
+  }
+
+  const normalized = filePath.split(path.sep);
+  const agentIndex = normalized.lastIndexOf("agents");
+  const sessionId = path.basename(filePath, ".jsonl");
+
+  return {
+    agentId:
+      agentIndex >= 0 && normalized.length > agentIndex + 1
+        ? normalized[agentIndex + 1]
+        : null,
+    sessionId: sessionId && sessionId !== "sessions" ? sessionId : null,
+    sessionFile: filePath,
+  };
+}
+
 async function loadSessionIndex(openclawRoot) {
   const sessionDirs = await listAgentSessionDirs(openclawRoot);
   const entries = [];
@@ -147,6 +166,7 @@ async function loadSessionIndex(openclawRoot) {
         entries.push({
           sessionKey,
           sessionId: firstString(value.sessionId),
+          sessionFile: firstString(value.sessionFile),
           accountId: firstString(value.deliveryContext?.accountId, value.lastAccountId, value.origin?.accountId),
           accountName: firstString(value.accountName, value.origin?.label),
           botPlatform: firstString(value.deliveryContext?.channel, value.channel, value.origin?.provider),
@@ -167,16 +187,37 @@ async function loadSessionIndex(openclawRoot) {
   return entries;
 }
 
+
+function deriveAgentIdFromSessionKey(sessionKey) {
+  if (typeof sessionKey !== "string") {
+    return null;
+  }
+  const match = sessionKey.match(/^agent:([^:]+):/);
+  return match?.[1] ?? null;
+}
+
+function looksLikeStableSessionId(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const trimmed = value.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+}
+
 function mergeIndexIdentity(resolved, sessionEntries) {
   if (!resolved) {
     return null;
   }
 
-  const matched = sessionEntries.find(
-    (entry) =>
-      (resolved.sessionId && entry.sessionId && resolved.sessionId === entry.sessionId) ||
-      (resolved.sessionKey && entry.sessionKey && resolved.sessionKey === entry.sessionKey),
-  );
+  const matched = sessionEntries.find((entry) => {
+    if (resolved.sessionId && entry.sessionId && resolved.sessionId === entry.sessionId) {
+      return true;
+    }
+    if (resolved.sessionKey && entry.sessionKey && resolved.sessionKey === entry.sessionKey) {
+      return true;
+    }
+    return false;
+  });
 
   if (!matched) {
     return {
@@ -239,6 +280,7 @@ export class SessionAttributionResolver {
       }
 
       const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+      const fileIdentity = deriveTranscriptSessionIdentity(filePath);
       const fallback = {
         sessionId: null,
         sessionKey: null,
@@ -263,19 +305,47 @@ export class SessionAttributionResolver {
 
           const lineStrings = identity._contentStrings;
           if (line.includes(runId) || lineStrings.has(runId)) {
+            const transcriptBound = sessionIndex.find((entry) => {
+              if (fileIdentity.sessionFile && entry.sessionFile && entry.sessionFile === fileIdentity.sessionFile) {
+                return true;
+              }
+              if (fileIdentity.sessionId && entry.sessionId && entry.sessionId === fileIdentity.sessionId) {
+                return true;
+              }
+              return false;
+            }) ?? null;
+
+            const resolvedBase = transcriptBound
+              ? {
+                  runId,
+                  sessionId: transcriptBound.sessionId ?? (looksLikeStableSessionId(identity.sessionId) ? identity.sessionId : null) ?? fileIdentity.sessionId,
+                  sessionKey: transcriptBound.sessionKey ?? null,
+                  agentId:
+                    identity.agentId ??
+                    fallback.agentId ??
+                    deriveAgentIdFromSessionKey(transcriptBound.sessionKey) ??
+                    fileIdentity.agentId,
+                  channelId: transcriptBound.channelId ?? null,
+                  accountId: transcriptBound.accountId ?? null,
+                  accountName: transcriptBound.accountName ?? null,
+                  botPlatform: transcriptBound.botPlatform ?? null,
+                  sourceFile: filePath,
+                }
+              : {
+                  runId,
+                  sessionId: (looksLikeStableSessionId(identity.sessionId) ? identity.sessionId : null) ?? fallback.sessionId ?? fileIdentity.sessionId,
+                  sessionKey: identity.sessionKey ?? fallback.sessionKey,
+                  agentId: identity.agentId ?? fallback.agentId ?? fileIdentity.agentId,
+                  channelId: identity.channelId ?? fallback.channelId,
+                  accountId: identity.accountId ?? fallback.accountId,
+                  accountName: identity.accountName ?? fallback.accountName,
+                  botPlatform: identity.botPlatform ?? fallback.botPlatform,
+                  sourceFile: filePath,
+                };
+
             const resolved = mergeIndexIdentity(
-              {
-                runId,
-                sessionId: identity.sessionId ?? fallback.sessionId,
-                sessionKey: identity.sessionKey ?? fallback.sessionKey,
-                agentId: identity.agentId ?? fallback.agentId,
-                channelId: identity.channelId ?? fallback.channelId,
-                accountId: identity.accountId ?? fallback.accountId,
-                accountName: identity.accountName ?? fallback.accountName,
-                botPlatform: identity.botPlatform ?? fallback.botPlatform,
-                sourceFile: filePath,
-              },
-              sessionIndex,
+              resolvedBase,
+              transcriptBound ? [transcriptBound] : sessionIndex,
             );
             this.cache.set(runId, resolved);
             return resolved;

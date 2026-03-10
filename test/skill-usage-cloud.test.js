@@ -479,7 +479,7 @@ test("cloud top fallback display can fill missing agent/account breakdowns from 
               accountCount: 2,
               installations: [
                 {
-                  installationId: "install-local",
+                  installationId: "install-1",
                   installationLabel: "Mac-mini",
                   triggerCount: 19,
                   attemptCount: 19,
@@ -514,7 +514,7 @@ test("cloud top fallback display can fill missing agent/account breakdowns from 
           accountCount: 0,
           installations: [
             {
-              installationId: "install-cloud",
+              installationId: "install-1",
               installationLabel: "Mac-mini",
               triggerCount: 19,
               attemptCount: 19,
@@ -531,7 +531,6 @@ test("cloud top fallback display can fill missing agent/account breakdowns from 
     const result = await cloud.queryTopSkillsWithFallback({ periodKey: "1d", limit: 5 });
     assert.equal(result.rows[0].agentCount, 2);
     assert.equal(result.rows[0].accountCount, 2);
-    assert.equal(result.rows[0].installations[0].installationId, "install-cloud");
     assert.equal(result.rows[0].installations[0].agents.length, 2);
     assert.equal(result.rows[0].installations[0].accounts.length, 2);
   } finally {
@@ -868,6 +867,201 @@ test("cloud falls back to local status when sync fails", async () => {
     assert.equal(status.sync.pendingLocalRecordCount, 1);
     assert.match(status.sync.lastError, /zero unavailable/);
     assert.match(status.degradedReason, /zero unavailable/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
+test("cloud top display falls back to full local row when cloud totals diverge from local enriched breakdown", async () => {
+  const store = {
+    async readEventsFromOffset() {
+      return { events: [], nextOffset: 0 };
+    },
+    async countEventsFromOffset() {
+      return { count: 0, nextOffset: 0 };
+    },
+  };
+
+  const cloud = new SkillUsageCloud({
+    stateDir: "/tmp/skill-usage-cloud-diverge",
+    installationIdentity: {
+      installationId: "install-1",
+      installationLabel: "Fans-MacBook-Air.local",
+    },
+    store,
+    options: { databaseName: "openclaw_skill_usage", provisionTag: "test" },
+    repositoryFactory: () => ({
+      async ensureSchema() {},
+      async ensureUsageSpace() {},
+      async ensureInstallationMember() {},
+      async upsertEvents() { return { uploaded: 0 }; },
+      async queryUsageSpaceSummary() { return { totals: { triggers: 5, attempts: 5 } }; },
+      async queryTopSkills() {
+        return {
+          rows: [
+            {
+              skillId: "weather",
+              skillName: "weather",
+              triggerCount: 5,
+              attemptCount: 5,
+              installationCount: 1,
+              agentCount: 0,
+              accountCount: 0,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Fans-MacBook-Air.local",
+                  triggerCount: 5,
+                  attemptCount: 5,
+                  agents: [],
+                  accounts: [],
+                },
+              ],
+            },
+          ],
+        };
+      },
+      async close() {},
+    }),
+  });
+
+  cloud.localAnalytics = {
+    async queryTopSkills() {
+      return {
+        rows: [
+          {
+            skillId: "weather",
+            skillName: "weather",
+            triggerCount: 22,
+            attemptCount: 22,
+            installationCount: 1,
+            agentCount: 3,
+            accountCount: 3,
+            installations: [
+              {
+                installationId: "install-1",
+                installationLabel: "Fans-MacBook-Air.local",
+                triggerCount: 22,
+                attemptCount: 22,
+                agents: [
+                  { agentId: "elon", triggerCount: 11, attemptCount: 11 },
+                  { agentId: "main", triggerCount: 10, attemptCount: 10 },
+                  { agentId: "tim", triggerCount: 1, attemptCount: 1 },
+                ],
+                accounts: [
+                  { accountKey: "discord:elon", triggerCount: 13, attemptCount: 13 },
+                  { accountKey: "whatsapp:default", triggerCount: 6, attemptCount: 6 },
+                  { accountKey: "discord:tim", triggerCount: 2, attemptCount: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+    },
+  };
+
+  cloud.cloudState = {
+    usageSpace: { id: "install-1", source: "local" },
+    zero: { instanceId: "zero-1", expiresAt: new Date(Date.now() + 3600_000).toISOString() },
+    databaseName: "openclaw_skill_usage",
+    sync: { usageSpaceId: "install-1", checkpointOffset: 0 },
+  };
+
+  const result = await cloud.queryTopSkillsWithFallback({ periodKey: "7d", limit: 5 });
+  assert.equal(result.rows[0].triggerCount, 22);
+  assert.equal(result.rows[0].attemptCount, 22);
+  assert.equal(result.rows[0].agentCount, 3);
+  assert.equal(result.rows[0].accountCount, 3);
+  assert.equal(result.rows[0].installations[0].agents.length, 3);
+  assert.equal(result.rows[0].installations[0].accounts.length, 3);
+});
+
+
+test("cloud sync enriches pseudo-skill events before upload", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-pseudo-sync-"));
+  const store = {
+    async readEventsFromOffset() {
+      return {
+        events: [
+          {
+            eventKey: "evt-1",
+            attempts: 1,
+            observedAt: "2026-03-10T08:00:00.000Z",
+            installationId: "install-1",
+            usageSpaceId: "install-1",
+            installationLabel: "Fans-MacBook-Air.local",
+            triggerAnchor: "run-1",
+            toolCallId: "call-1",
+            status: "ok",
+            latencyMs: 5,
+            runId: "run-1",
+            sessionScope: "main",
+            skillId: "mem9-includes-plugin",
+            skillName: "mem9 (includes plugin)",
+            skillSource: "plugin",
+            agentId: null,
+            sessionId: null,
+            sessionKey: null,
+            channelId: null,
+            botId: null,
+            botName: null,
+            botPlatform: null,
+            botKey: null,
+            botLabel: null,
+          },
+        ],
+        nextOffset: 1,
+      };
+    },
+    async countEventsFromOffset() { return { count: 1, nextOffset: 1 }; },
+  };
+
+  let uploadedEvents = null;
+  const cloud = new SkillUsageCloud({
+    stateDir: tempDir,
+    installationIdentity: { installationId: 'install-1', installationLabel: 'Fans-MacBook-Air.local' },
+    store,
+    options: { databaseName: 'openclaw_skill_usage', provisionTag: 'test' },
+    repositoryFactory: () => ({
+      async ensureUsageSpace() {},
+      async ensureInstallationMember() {},
+      async upsertEvents(events) { uploadedEvents = events; return { uploaded: events.length }; },
+      async queryUsageSpaceSummary() { return { totalTriggers: 1, totalAttempts: 1, installationCount: 1, agentCount: 1, accountCount: 1, subagentRunCount: 0, lastObservedAt: '2026-03-10T08:00:00.000Z' }; },
+      async close() {},
+    }),
+    eventResolver: {
+      async resolve(runId) {
+        if (runId !== 'run-1') return null;
+        return {
+          runId,
+          agentId: 'elon',
+          sessionId: 'session-1',
+          sessionKey: 'agent:elon:discord:channel:1480303286182608897',
+          channelId: '1480303286182608897',
+          accountId: 'elon',
+          accountName: 'elon',
+          botPlatform: 'discord',
+        };
+      },
+    },
+  });
+
+  cloud.cloudState = {
+    usageSpace: { id: 'install-1', source: 'local' },
+    zero: { instanceId: 'zero-1', expiresAt: new Date(Date.now() + 3600_000).toISOString() },
+    databaseName: 'openclaw_skill_usage',
+    sync: { usageSpaceId: 'install-1', checkpointOffset: 0 },
+  };
+
+  try {
+    await cloud.syncAll();
+    assert.equal(uploadedEvents.length, 1);
+    assert.equal(uploadedEvents[0].skillId, 'mem9-includes-plugin');
+    assert.equal(uploadedEvents[0].agentId, 'elon');
+    assert.equal(uploadedEvents[0].sessionKey, 'agent:elon:discord:channel:1480303286182608897');
+    assert.equal(uploadedEvents[0].botKey, 'discord:elon');
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
