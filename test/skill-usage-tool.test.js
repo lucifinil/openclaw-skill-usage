@@ -135,3 +135,51 @@ test("skill usage tool renders status output", async () => {
   assert.match(result.content[0].text, /pending local records: 0/);
   assert.match(result.content[0].text, /last sync error: none/);
 });
+
+
+test("skill usage tool renders unknown channel-account bucket when breakdown is below parent total", async () => {
+  const result = await executeSkillUsageTool({
+    cloud: {
+      async queryTopSkillsWithFallback() {
+        return {
+          source: "cloud",
+          cloudState: "healthy",
+          aggregationScope: "usage-space",
+          period: { key: "7d", label: "7 days" },
+          rows: [
+            {
+              skillId: "weather",
+              skillName: "weather",
+              triggerCount: 29,
+              attemptCount: 29,
+              installationCount: 1,
+              agentCount: 3,
+              accountCount: 3,
+              installations: [
+                {
+                  installationId: "install-1",
+                  installationLabel: "Fans-MacBook-Air.local",
+                  triggerCount: 29,
+                  attemptCount: 29,
+                  agents: [
+                    { agentId: "elon", agentLabel: "elon", triggerCount: 18, attemptCount: 18 },
+                    { agentId: "main", agentLabel: "main", triggerCount: 10, attemptCount: 10 },
+                    { agentId: "tim", agentLabel: "tim", triggerCount: 1, attemptCount: 1 },
+                  ],
+                  accounts: [
+                    { accountKey: "discord:elon", accountLabel: "Discord / elon", triggerCount: 18, attemptCount: 18 },
+                    { accountKey: "whatsapp:default", accountLabel: "Whatsapp / default", triggerCount: 6, attemptCount: 6 },
+                    { accountKey: "discord:tim", accountLabel: "Discord / tim", triggerCount: 2, attemptCount: 2 },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    },
+    params: { action: "top", period: "7d", limit: 5 },
+  });
+
+  assert.match(result.content[0].text, /Unknown channel account - 3 total triggers, 3 attempts \(routing metadata incomplete\)/);
+});
