@@ -1066,3 +1066,121 @@ test("cloud sync enriches pseudo-skill events before upload", async () => {
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+
+test("joined usage-space top/status uses installation-1 enriched cloud baseline before aggregating remote installations", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-usage-cloud-joined-"));
+
+  try {
+    const repository = new FakeRepository();
+    const cloud = createCloud(tempDir, repository);
+    await cloud.initialize();
+    await cloud.store.initialize();
+
+    await cloud.store.record({
+      eventKey: "local-weather-1",
+      attempts: 1,
+      firstTrigger: true,
+      firstObservedAt: "2026-03-07T10:00:00.000Z",
+      installationId: "install-1",
+      installationLabel: "Fans-MacBook-Air.local",
+      agentId: null,
+      botKey: null,
+      botLabel: null,
+      botPlatform: null,
+      runId: "run-local-1",
+      sessionScope: "main",
+      skillId: "weather",
+      skillName: "weather",
+      skillSource: "plugin",
+      status: "ok",
+      observedAt: "2026-03-07T10:00:00.000Z",
+      triggerAnchor: "turn-local-1",
+      usageSpaceId: "install-1",
+    });
+
+    cloud.localAnalytics = {
+      eventResolver: {
+        async resolve(runId) {
+          if (runId !== 'run-local-1') return null;
+          return {
+            runId,
+            agentId: 'elon',
+            sessionId: 'session-local-1',
+            sessionKey: 'agent:elon:discord:channel:1480303286182608897',
+            channelId: '1480303286182608897',
+            accountId: 'elon',
+            accountName: 'elon',
+            botPlatform: 'discord',
+          };
+        },
+      },
+      async queryTopSkills() {
+        return { rows: [] };
+      },
+    };
+
+    await cloud.syncAll();
+
+    const token = encodeUsageSpaceToken({
+      usageSpaceId: "shared-space",
+      installationId: "install-remote",
+      databaseName: "shared_usage",
+      zero: {
+        instanceId: "zero-shared",
+        host: "zero.example.com",
+        port: 4000,
+        username: "demo",
+        password: "secret",
+      },
+    });
+
+    await cloud.joinUsageSpace(token);
+
+    await repository.upsertEvents([
+      {
+        eventKey: "remote-weather-1",
+        recordKey: "remote-weather-1:1",
+        attempts: 1,
+        firstTrigger: true,
+        firstObservedAt: "2026-03-07T11:00:00.000Z",
+        installationId: "install-remote",
+        installationLabel: "Remote-Mac-mini",
+        agentId: "tim",
+        botKey: "discord:tim",
+        botLabel: "Discord / tim",
+        botPlatform: "discord",
+        runId: "run-remote-1",
+        sessionScope: "main",
+        skillId: "weather",
+        skillName: "weather",
+        skillSource: "plugin",
+        status: "ok",
+        observedAt: "2026-03-07T11:00:00.000Z",
+        triggerAnchor: "turn-remote-1",
+        usageSpaceId: "shared-space",
+      },
+    ]);
+
+    const top = await cloud.queryTopSkillsWithFallback({ periodKey: "7d", limit: 5 });
+    const status = await cloud.getStatusWithFallback();
+
+    assert.equal(top.aggregationScope, "usage-space");
+    assert.equal(top.rows[0].skillId, "weather");
+    assert.equal(top.rows[0].triggerCount, 2);
+    assert.equal(top.rows[0].installationCount, 2);
+    assert.ok(top.rows[0].installations.some((item) => item.installationLabel === "Mac-mini"));
+    assert.ok(top.rows[0].installations.some((item) => item.installationLabel === "Remote-Mac-mini"));
+
+    const localInstallation = top.rows[0].installations.find((item) => item.installationId === "install-1");
+    assert.ok(localInstallation);
+    assert.equal(localInstallation.agents[0].agentId, 'elon');
+    assert.equal(localInstallation.accounts[0].accountKey, 'discord:elon');
+
+    assert.equal(status.aggregationScope, "usage-space");
+    assert.equal(status.usageSpaceId, "shared-space");
+    assert.equal(status.summary.installationCount, 2);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
