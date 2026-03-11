@@ -17,7 +17,7 @@ Default compact output:
 ```text
 skill: weather (37)
 - agent: elon 26 | main 10 | tim 1
-- channel: disc/el 20 | wa 6 | tim 2 | unknown 9
+- channel: disc/el 26 | wa 6 | tim 2 | unknown 3
 =====================================
 skill: skill-vetter (12)
 - agent: main 9 | tim 2 | elon 1
@@ -26,28 +26,6 @@ skill: skill-vetter (12)
 skill: github (8)
 - agent: elon 6 | main 1 | unknown 1
 - channel: disc/el 6 | wa 1 | unknown 1
-```
-
-Joined usage-space compact output keeps installation boundaries visible:
-
-```text
-skill: weather (34)
-installation: Fans-MacBook-Air.local (30)
-- agent: elon 19 | main 10 | tim 1
-- channel: disc/el 13 | wa 6 | tim 2 | unknown 9
--------------------------------------
-installation: Remote-Mac-mini (4)
-- agent: tim 4
-- channel: tim 4
-=====================================
-skill: github (7)
-installation: Fans-MacBook-Air.local (5)
-- agent: elon 4 | main 1
-- channel: disc/el 4 | wa 1
--------------------------------------
-installation: Remote-Mac-mini (2)
-- agent: tim 2
-- channel: tim 2
 ```
 
 Verbose `detail` output is still available when you want the full breakdown:
