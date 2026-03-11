@@ -101,18 +101,28 @@ That gives you two useful numbers:
 
 ## Zero-config install
 
-Install the plugin, restart the Gateway, and use it.
+### Quick install (recommended)
 
-Local development install:
+Install the published npm package:
 
 ```bash
-npm install
-openclaw plugins install .
+openclaw plugins install openclaw-skill-usage
+openclaw gateway restart
 ```
 
-Then restart the OpenClaw Gateway.
-
 After that, the plugin starts counting immediately. The first cloud-backed query or sync auto-provisions a TiDB Cloud Zero instance with no manual database setup. If TiDB Cloud Zero is unreachable, `top` and `status` still return local-only data so the plugin remains useful offline.
+
+### Development install
+
+If you are working from a local clone of this repository instead of the published package:
+
+```bash
+git clone https://github.com/lucifinil/openclaw-skill-usage.git
+cd openclaw-skill-usage
+npm install
+openclaw plugins install --link
+openclaw gateway restart
+```
 
 ## Native OpenClaw surface
 
