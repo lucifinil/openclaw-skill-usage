@@ -90,6 +90,36 @@ This provides:
 - local skill usage tracking
 - optional TiDB Cloud Zero sync for shared usage spaces
 
+Source repository:
+
+- https://github.com/lucifinil/openclaw-skill-usage
+
+### Privacy and data flow
+
+By default, the plugin is useful locally and can still answer `top` / `status` with local-only data.
+
+If cloud sync is used, the remote destination is a **TiDB Cloud Zero** instance created for the user's usage space. The plugin's `/skillusage status` output shows the cloud instance id and a claim URL for that instance.
+
+That claim URL matters: the user can use it to **claim the TiDB Cloud Zero instance into their own TiDB Cloud account**, making the backend directly visible and controllable from their side rather than remaining an opaque shared service.
+
+The plugin is designed to sync **usage metadata**, not conversation content. The intended synced fields are limited to:
+
+- skill ids and skill names
+- installation ids and installation labels
+- agent ids
+- channel account keys / labels / platform identifiers
+- routing or session identifiers needed for usage attribution
+- timestamps, status, and latency
+
+The plugin should **not** sync:
+
+- message bodies or conversation text
+- prompts or completions
+- SKILL.md contents
+- API keys, auth tokens, cookies, or other secrets
+
+Important caveat: channel-account labels, routing identifiers, and installation labels can still be sensitive metadata in some environments. If the user is privacy-sensitive, explain that clearly and prefer local-only usage unless they explicitly want shared/cloud-backed analytics.
+
 ---
 
 ## Definition of Done
@@ -189,6 +219,8 @@ metadata sent: skill id/name, installation id/label, channel account key/label/p
 
 By default, one installation starts in its own local usage space.
 
+Only proceed with shared usage-space setup if the user explicitly wants cross-machine sharing and understands that usage metadata will be written to the TiDB Cloud Zero instance for that usage space.
+
 If the user wants to share usage across multiple installations:
 
 ### On installation 1
@@ -211,7 +243,9 @@ After join, `top` can show multiple installation blocks in one shared leaderboar
 
 - Prefer npm installation for regular users.
 - Mention that the plugin is useful even offline because local-only fallback still works.
-- If the user asks about privacy, explain that synced metadata is limited to non-sensitive usage/routing identifiers, timestamps, status, and latency.
+- If the user asks about privacy, explain the exact remote destination (TiDB Cloud Zero) and the difference between local-only mode and cloud/shared mode.
+- Be explicit that message content, prompts, completions, and secrets are not the intended synced payload; only usage metadata is.
+- Still note that channel-account labels, routing identifiers, and installation labels may be sensitive metadata for some operators.
 - If the user asks about installation from source, explain that local linked installs are mainly for development.
 
 ---
