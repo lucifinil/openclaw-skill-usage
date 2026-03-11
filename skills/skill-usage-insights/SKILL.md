@@ -33,3 +33,25 @@ Response expectations:
 - When the result is shared, include the installation, agent, and channel-account breakdowns if they help answer the question.
 - Mention the usage-space scope if it matters to the answer.
 - If the user asks about privacy, state that only non-sensitive metadata is synced: skill ids/names, installation/agent/account identifiers, routing/session metadata, timestamps, status, and latency.
+
+Examples:
+
+- "What are my most used skills?"
+  - call `skill_usage_stats` with `{ action: "top", period: "all" }`
+- "Show my top skills in the last 7 days."
+  - call `skill_usage_stats` with `{ action: "top", period: "7d" }`
+- "Is this local-only or shared across machines?"
+  - call `skill_usage_stats` with `{ action: "status" }`
+- "Which bot/account is using `git-pr` the most?"
+  - call `skill_usage_stats` with `{ action: "top", period: "all" }` and explain the account breakdown
+
+Formatting:
+
+- The tool defaults to compact output.
+- Use a more verbose explanation only when the user asks for the full detailed breakdown.
+
+Boundaries:
+
+- This skill is for reading and explaining skill-usage analytics.
+- It does not install the plugin, enable config, or manage join/sync setup by itself.
+- For setup or troubleshooting, hand off to the relevant install/config guidance instead of pretending the analytics skill can do provisioning work.
